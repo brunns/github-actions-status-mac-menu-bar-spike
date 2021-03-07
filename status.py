@@ -15,6 +15,7 @@ REPOS = [('brunns', 'mbtest'), ('brunns', 'brunns-matchers')]
 
 
 def main():
+    global app
     app = StatusApp()
 
     for owner, name in REPOS:
@@ -25,15 +26,15 @@ def main():
 
     app.run()
 
-    @rumps.timer(90 * len(REPOS))
-    def check(self):
-        for repo in app.repos:
-            repo.check()
 
-        status = OK if all(repo.conclusion == "success" for repo in app.repos) else FAILED
-        app.app.title = status
-        if status == FAILED: rumps.notification(title="Oooops...", subtitle="You fucked it up again.", message="Now go and fix it.")
+@rumps.timer(90 * len(REPOS))
+def check(self):
+    for repo in app.repos:
+        repo.check()
 
+    status = OK if all(repo.conclusion == "success" for repo in app.repos) else FAILED
+    app.app.title = status
+    if status == FAILED: rumps.notification(title="Oooops...", subtitle="You fucked it up again.", message="Now go and fix it.")
 
 @dataclass
 class Repo:
