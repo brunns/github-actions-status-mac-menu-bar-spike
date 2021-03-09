@@ -7,4 +7,4 @@ I won't do any of these here - this is just a spike after all - but a real imple
 * Show running builds.
 * Better structure - much better.
 * [CLI options](https://docs.python.org/3/library/argparse.html).
-* Configurability - including preferences UI.
+* Configurability (including eventually a preferences UI - but a config file will do to start with).

@@ -34,12 +34,13 @@ class Status(OrderedEnum):
 
 @rumps.timer(90 * len(REPOS))
 def check(self):
+    previous_status = max(repo.status for repo in app.repos)
     for repo in app.repos:
         repo.check()
 
     status = max(repo.status for repo in app.repos)
     app.app.title = status.value
-    if status == Status.FAILED:
+    if status == Status.FAILED and previous_status == Status.OK:
         rumps.notification(title="Oooops...", subtitle="It's gone wrong again.", message="Now go and fix it.")
 
 
