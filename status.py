@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from ordered_enum import OrderedEnum
 
 import rumps
 import requests
@@ -8,17 +9,14 @@ from box import Box
 
 rumps.debug_mode(True)
 
-OK = "🟢"
-FAILED = "🔴"
-RUNNING = "🟠"
-REPOS = [('brunns', 'mbtest'), ('brunns', 'brunns-matchers')]
+REPOS = [('brunns', 'mbtest'), ('brunns', 'brunns-matchers'), ("brunns", "PyHamcrest"), ("hamcrest", "PyHamcrest"), ("brunns", "github-actions-status-mac-menu-bar-spike")]
 
 
 def main():
     global app
     app = StatusApp()
 
-    for owner, name in REPOS:
+    for owner, name in sorted(REPOS):
         menu_item = rumps.MenuItem(f"{owner}/{name}")
         repo = Repo(owner, name, menu_item)
         repo.menu_item.set_callback(repo.on_click)
@@ -27,29 +25,37 @@ def main():
     app.run()
 
 
+class Status(OrderedEnum):
+
+    OK = "🟢"
+    RUNNING = "🟠"
+    FAILED = "🔴"
+
+
 @rumps.timer(90 * len(REPOS))
 def check(self):
     for repo in app.repos:
         repo.check()
 
-    status = OK if all(repo.conclusion == "success" for repo in app.repos) else FAILED
-    app.app.title = status
-    if status == FAILED: rumps.notification(title="Oooops...", subtitle="You fucked it up again.", message="Now go and fix it.")
+    status = max(repo.status for repo in app.repos)
+    app.app.title = status.value
+    if status == Status.FAILED:
+        rumps.notification(title="Oooops...", subtitle="It's gone wrong again.", message="Now go and fix it.")
+
 
 @dataclass
 class Repo:
     owner: str
     repo: str
     menu_item: rumps.MenuItem
-    conclusion: str = None
+    status: Status = Status.OK
     url: str = None
 
     def check(self):
         run = self.get_run()
         self.url = run.html_url
-        self.conclusion = run.conclusion
-        state = OK if run.conclusion == "success" else FAILED
-        self.menu_item.title = f"{state} {self.owner}/{self.repo}"
+        self.status = Status.OK if run.conclusion == "success" else Status.FAILED
+        self.menu_item.title = f"{self.status.value} {self.owner}/{self.repo}"
 
     def get_run(self):
         resp = requests.get(self.github_api_url())
@@ -69,7 +75,7 @@ class Repo:
 
 class StatusApp:
     def __init__(self):
-        self.app = rumps.App("Github Actions Status", OK)
+        self.app = rumps.App("Github Actions Status", Status.OK.value)
         self.repos = []
 
     def run(self):
