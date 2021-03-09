@@ -1,0 +1,10 @@
+name: "50/50"
+on: push
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: hedythedev/passibility@main
+        with:
+          percentage: 50
