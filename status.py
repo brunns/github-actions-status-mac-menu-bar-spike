@@ -1,18 +1,23 @@
+import webbrowser
 from dataclasses import dataclass
 from itertools import dropwhile
 
-from ordered_enum import OrderedEnum
-
-import rumps
 import requests
-import webbrowser
-from furl import furl
+import rumps
 from box import Box
+from furl import furl
+from ordered_enum import OrderedEnum
 from requests import HTTPError
 
 rumps.debug_mode(True)
 
-REPOS = [('brunns', 'mbtest'), ('brunns', 'brunns-matchers'), ("brunns", "PyHamcrest"), ("hamcrest", "PyHamcrest"), ("brunns", "github-actions-status-mac-menu-bar-spike")]
+REPOS = [
+    ("brunns", "mbtest"),
+    ("brunns", "brunns-matchers"),
+    ("brunns", "PyHamcrest"),
+    ("hamcrest", "PyHamcrest"),
+    ("brunns", "github-actions-status-mac-menu-bar-spike"),
+]
 
 
 def main():
@@ -46,7 +51,9 @@ def check(sender):
     status = max(repo.status for repo in app.repos)
     app.app.title = status.value
     if status == Status.FAILED and previous_status in (Status.OK, Status.RUNNING_FROM_OK):
-        rumps.notification(title="Oooops...", subtitle="It's gone wrong again.", message="Now go and fix it.")
+        rumps.notification(
+            title="Oooops...", subtitle="It's gone wrong again.", message="Now go and fix it."
+        )
 
 
 @dataclass
@@ -65,7 +72,11 @@ class Repo:
             self.actions_url = furl(completed.html_url)
 
             if runs:
-                self.status = Status.RUNNING_FROM_OK if completed.conclusion == "success" else Status.RUNNING_FROM_FAILED
+                self.status = (
+                    Status.RUNNING_FROM_OK
+                    if completed.conclusion == "success"
+                    else Status.RUNNING_FROM_FAILED
+                )
             else:
                 self.status = Status.OK if completed.conclusion == "success" else Status.FAILED
         except HTTPError as e:
@@ -77,20 +88,20 @@ class Repo:
     def get_runs(self):
         resp = requests.get(self.github_api_list_workflow_runs_url())
         resp.raise_for_status()
-        all = [Box(r) for r in resp.json()['workflow_runs']]
+        all = [Box(r) for r in resp.json()["workflow_runs"]]
         started = dropwhile(lambda r: r.status == "queued", all)
         return list(take_until(lambda r: r.status == "completed", started))
 
     def github_api_list_workflow_runs_url(self):
         # See https://docs.github.com/en/rest/reference/actions#list-workflow-runs-for-a-repository for docs
         url = furl("https://api.github.com/repos/") / self.owner / self.repo / "actions/runs"
-        url.args['accept'] = "application/vnd.github.v3+json"
-        # url.args['status'] = "completed"
-        url.args['per_page'] = 10
+        url.args["accept"] = "application/vnd.github.v3+json"
+        url.args["per_page"] = 10
         return url
 
     def on_click(self, foo):
-        if self.actions_url: webbrowser.open(self.actions_url.url)
+        if self.actions_url:
+            webbrowser.open(self.actions_url.url)
 
 
 class StatusApp:
