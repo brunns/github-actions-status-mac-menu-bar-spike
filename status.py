@@ -42,7 +42,7 @@ class Status(OrderedEnum):
     DISCONNECTED = "🚫"
 
 
-@rumps.timer(90 * len(REPOS))
+@rumps.timer(10)
 def check(sender):
     previous_status = max(repo.status for repo in app.repos)
     for repo in app.repos:
@@ -63,22 +63,24 @@ class Repo:
     menu_item: rumps.MenuItem
     status: Status = Status.OK
     actions_url: furl = None
+    etag: str = None
 
     def check(self):
         try:
             runs = self.get_runs()
-            completed = runs.pop(-1)
-
-            self.actions_url = furl(completed.html_url)
-
             if runs:
-                self.status = (
-                    Status.RUNNING_FROM_OK
-                    if completed.conclusion == "success"
-                    else Status.RUNNING_FROM_FAILED
-                )
-            else:
-                self.status = Status.OK if completed.conclusion == "success" else Status.FAILED
+                completed = runs.pop(-1)
+
+                self.actions_url = furl(completed.html_url)
+
+                if runs:
+                    self.status = (
+                        Status.RUNNING_FROM_OK
+                        if completed.conclusion == "success"
+                        else Status.RUNNING_FROM_FAILED
+                    )
+                else:
+                    self.status = Status.OK if completed.conclusion == "success" else Status.FAILED
         except HTTPError as e:
             print(e)
             self.status = Status.DISCONNECTED
@@ -86,11 +88,18 @@ class Repo:
         self.menu_item.title = f"{self.status.value} {self.owner}/{self.repo}"
 
     def get_runs(self):
-        resp = requests.get(self.github_api_list_workflow_runs_url())
+        headers = {"If-None-Match": self.etag} if self.etag else {}
+
+        resp = requests.get(self.github_api_list_workflow_runs_url(), headers=headers)
         resp.raise_for_status()
-        all = [Box(r) for r in resp.json()["workflow_runs"]]
-        started = dropwhile(lambda r: r.status == "queued", all)
-        return list(take_until(lambda r: r.status == "completed", started))
+        self.etag = resp.headers["ETag"]
+
+        if resp.status_code == 304:
+            return None
+        else:
+            all = [Box(r) for r in resp.json()["workflow_runs"]]
+            started = dropwhile(lambda r: r.status == "queued", all)
+            return list(take_until(lambda r: r.status == "completed", started))
 
     def github_api_list_workflow_runs_url(self):
         # See https://docs.github.com/en/rest/reference/actions#list-workflow-runs-for-a-repository for docs
