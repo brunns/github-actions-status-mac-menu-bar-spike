@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+from itertools import dropwhile
+
 from ordered_enum import OrderedEnum
 
 import rumps
@@ -6,6 +8,7 @@ import requests
 import webbrowser
 from furl import furl
 from box import Box
+from requests import HTTPError
 
 rumps.debug_mode(True)
 
@@ -34,7 +37,7 @@ class Status(OrderedEnum):
     DISCONNECTED = "🚫"
 
 
-@rumps.timer(60 * len(REPOS))
+@rumps.timer(90 * len(REPOS))
 def check(sender):
     previous_status = max(repo.status for repo in app.repos)
     for repo in app.repos:
@@ -42,7 +45,7 @@ def check(sender):
 
     status = max(repo.status for repo in app.repos)
     app.app.title = status.value
-    if status == Status.FAILED and previous_status == Status.OK:
+    if status == Status.FAILED and previous_status in (Status.OK, Status.RUNNING_FROM_OK):
         rumps.notification(title="Oooops...", subtitle="It's gone wrong again.", message="Now go and fix it.")
 
 
@@ -55,21 +58,35 @@ class Repo:
     actions_url: furl = None
 
     def check(self):
-        run = self.get_run()
-        self.actions_url = furl(run.html_url)
-        self.status = Status.OK if run.conclusion == "success" else Status.FAILED
+        try:
+            runs = self.get_runs()
+            completed = runs.pop(-1)
+
+            self.actions_url = furl(completed.html_url)
+
+            if runs:
+                self.status = Status.RUNNING_FROM_OK if completed.conclusion == "success" else Status.RUNNING_FROM_FAILED
+            else:
+                self.status = Status.OK if completed.conclusion == "success" else Status.FAILED
+        except HTTPError as e:
+            print(e)
+            self.status = Status.DISCONNECTED
+
         self.menu_item.title = f"{self.status.value} {self.owner}/{self.repo}"
 
-    def get_run(self):
-        resp = requests.get(self.github_api_url())
+    def get_runs(self):
+        resp = requests.get(self.github_api_list_workflow_runs_url())
         resp.raise_for_status()
-        return Box(resp.json()['workflow_runs'][0])
+        all = [Box(r) for r in resp.json()['workflow_runs']]
+        started = dropwhile(lambda r: r.status == "queued", all)
+        return list(take_until(lambda r: r.status == "completed", started))
 
-    def github_api_url(self):
+    def github_api_list_workflow_runs_url(self):
+        # See https://docs.github.com/en/rest/reference/actions#list-workflow-runs-for-a-repository for docs
         url = furl("https://api.github.com/repos/") / self.owner / self.repo / "actions/runs"
         url.args['accept'] = "application/vnd.github.v3+json"
-        url.args['status'] = "completed"
-        url.args['per_page'] = 1
+        # url.args['status'] = "completed"
+        url.args['per_page'] = 10
         return url
 
     def on_click(self, foo):
@@ -87,6 +104,13 @@ class StatusApp:
     def add(self, repo):
         self.repos.append(repo)
         self.app.menu.add(repo.menu_item)
+
+
+def take_until(predicate, iterable):
+    for i in iterable:
+        yield i
+        if predicate(i):
+            break
 
 
 if __name__ == "__main__":
