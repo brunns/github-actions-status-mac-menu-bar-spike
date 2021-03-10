@@ -28,12 +28,14 @@ def main():
 class Status(OrderedEnum):
 
     OK = "🟢"
-    RUNNING = "🟠"
+    RUNNING_FROM_OK = "♻️"
+    RUNNING_FROM_FAILED = "🟠"
     FAILED = "🔴"
+    DISCONNECTED = "🚫"
 
 
-@rumps.timer(90 * len(REPOS))
-def check(self):
+@rumps.timer(60 * len(REPOS))
+def check(sender):
     previous_status = max(repo.status for repo in app.repos)
     for repo in app.repos:
         repo.check()
@@ -50,11 +52,11 @@ class Repo:
     repo: str
     menu_item: rumps.MenuItem
     status: Status = Status.OK
-    url: str = None
+    actions_url: furl = None
 
     def check(self):
         run = self.get_run()
-        self.url = run.html_url
+        self.actions_url = furl(run.html_url)
         self.status = Status.OK if run.conclusion == "success" else Status.FAILED
         self.menu_item.title = f"{self.status.value} {self.owner}/{self.repo}"
 
@@ -71,7 +73,7 @@ class Repo:
         return url
 
     def on_click(self, foo):
-        if self.url: webbrowser.open(self.url)
+        if self.actions_url: webbrowser.open(self.actions_url.url)
 
 
 class StatusApp:
