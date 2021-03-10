@@ -4,6 +4,7 @@ from itertools import dropwhile
 
 import requests
 import rumps
+import arrow
 from box import Box
 from furl import furl
 from ordered_enum import OrderedEnum
@@ -67,13 +68,13 @@ class Repo:
 
     def check(self):
         try:
-            runs = self.get_runs()
-            if runs:
-                completed = runs.pop(-1)
+            new_runs = self.get_new_runs()
+            if new_runs:
+                completed, in_progress = new_runs.pop(-1), new_runs
 
                 self.actions_url = furl(completed.html_url)
 
-                if runs:
+                if in_progress:
                     self.status = (
                         Status.RUNNING_FROM_OK
                         if completed.conclusion == "success"
@@ -87,10 +88,17 @@ class Repo:
 
         self.menu_item.title = f"{self.status.value} {self.owner}/{self.repo}"
 
-    def get_runs(self):
+    def get_new_runs(self):
         headers = {"If-None-Match": self.etag} if self.etag else {}
 
         resp = requests.get(self.github_api_list_workflow_runs_url(), headers=headers)
+
+        remaining_ = int(resp.headers['X-RateLimit-Remaining'])
+        limit_ = int(resp.headers['X-RateLimit-Limit'])
+        reset_ = arrow.get(int(resp.headers['X-RateLimit-Reset']))
+        if remaining_ <= (limit_/3):
+            print(f"rate limit remaining {remaining_}, refreshes at {reset_}")
+
         resp.raise_for_status()
         self.etag = resp.headers["ETag"]
 
