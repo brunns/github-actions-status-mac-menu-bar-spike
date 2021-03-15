@@ -126,7 +126,6 @@ class Repo:
         if self.actions_url:
             webbrowser.open(self.actions_url.url)
 
-
     @staticmethod
     def _report_rate_limit_shortage(resp):
         remaining_ = int(resp.headers["X-RateLimit-Remaining"])
@@ -134,6 +133,7 @@ class Repo:
         reset_ = arrow.get(int(resp.headers["X-RateLimit-Reset"]))
         if remaining_ <= (limit_ / 3):
             print(f"rate limit remaining {remaining_}, refreshes at {reset_}")
+
 
 class StatusApp:
     def __init__(self):
