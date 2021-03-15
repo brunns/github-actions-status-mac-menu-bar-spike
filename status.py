@@ -2,9 +2,9 @@ import webbrowser
 from dataclasses import dataclass
 from itertools import dropwhile
 
+import arrow
 import requests
 import rumps
-import arrow
 from box import Box
 from furl import furl
 from ordered_enum import OrderedEnum
@@ -19,6 +19,7 @@ REPOS = [
     ("hamcrest", "PyHamcrest"),
     ("brunns", "github-actions-status-mac-menu-bar-spike"),
 ]
+DATE_FORMAT = "DD/MM/YY HH:mm"
 
 
 def main():
@@ -26,9 +27,7 @@ def main():
     app = StatusApp()
 
     for owner, name in sorted(REPOS):
-        menu_item = rumps.MenuItem(f"{owner}/{name}")
-        repo = Repo(owner, name, menu_item)
-        repo.menu_item.set_callback(repo.on_click)
+        repo = Repo.build(name, owner)
         app.add(repo)
 
     app.run()
@@ -65,6 +64,14 @@ class Repo:
     status: Status = Status.OK
     actions_url: furl = None
     etag: str = None
+    last_run: arrow.arrow = None
+
+    @classmethod
+    def build(cls, name, owner):
+        menu_item = rumps.MenuItem(f"{owner}/{name}")
+        repo = cls(owner, name, menu_item)
+        repo.menu_item.set_callback(repo.on_click)
+        return repo
 
     def check(self):
         try:
@@ -73,6 +80,7 @@ class Repo:
                 completed, in_progress = new_runs.pop(-1), new_runs
 
                 self.actions_url = furl(completed.html_url)
+                self.last_run = arrow.get(completed.updated_at)
 
                 if in_progress:
                     self.status = (
@@ -86,18 +94,16 @@ class Repo:
             print(e)
             self.status = Status.DISCONNECTED
 
-        self.menu_item.title = f"{self.status.value} {self.owner}/{self.repo}"
+        self.menu_item.title = (
+            f"{self.status.value} {self.owner}/{self.repo} - {self.last_run.format(DATE_FORMAT)}"
+        )
 
     def get_new_runs(self):
         headers = {"If-None-Match": self.etag} if self.etag else {}
 
         resp = requests.get(self.github_api_list_workflow_runs_url(), headers=headers)
 
-        remaining_ = int(resp.headers['X-RateLimit-Remaining'])
-        limit_ = int(resp.headers['X-RateLimit-Limit'])
-        reset_ = arrow.get(int(resp.headers['X-RateLimit-Reset']))
-        if remaining_ <= (limit_/3):
-            print(f"rate limit remaining {remaining_}, refreshes at {reset_}")
+        self._report_rate_limit_shortage(resp)
 
         resp.raise_for_status()
         self.etag = resp.headers["ETag"]
@@ -116,10 +122,18 @@ class Repo:
         url.args["per_page"] = 10
         return url
 
-    def on_click(self, foo):
+    def on_click(self, sender):
         if self.actions_url:
             webbrowser.open(self.actions_url.url)
 
+
+    @staticmethod
+    def _report_rate_limit_shortage(resp):
+        remaining_ = int(resp.headers["X-RateLimit-Remaining"])
+        limit_ = int(resp.headers["X-RateLimit-Limit"])
+        reset_ = arrow.get(int(resp.headers["X-RateLimit-Reset"]))
+        if remaining_ <= (limit_ / 3):
+            print(f"rate limit remaining {remaining_}, refreshes at {reset_}")
 
 class StatusApp:
     def __init__(self):
