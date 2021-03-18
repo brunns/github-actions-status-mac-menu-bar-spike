@@ -94,9 +94,8 @@ class Repo:
             print(e)
             self.status = Status.DISCONNECTED
 
-        self.menu_item.title = (
-            f"{self.status.value} {self.owner}/{self.repo} - {self.last_run.format(DATE_FORMAT)}"
-        )
+        self.menu_item.title = f"{self.status.value} {self.owner}/{self.repo}"
+        # self.menu_item.title = f"{self.status.value} {self.owner}/{self.repo} - {self.last_run.format(DATE_FORMAT)}"
 
     def get_new_runs(self):
         headers = {"If-None-Match": self.etag} if self.etag else {}
