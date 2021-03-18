@@ -62,7 +62,7 @@ class Repo:
     repo: str
     menu_item: rumps.MenuItem
     status: Status = Status.OK
-    actions_url: furl = None
+    last_run_url: furl = None
     etag: str = None
     last_run: arrow.arrow = None
 
@@ -77,9 +77,9 @@ class Repo:
         try:
             new_runs = self.get_new_runs()
             if new_runs:
-                completed, in_progress = new_runs.pop(-1), new_runs
+                *in_progress, completed = new_runs
 
-                self.actions_url = furl(completed.html_url)
+                self.last_run_url = furl(completed.html_url)
                 self.last_run = arrow.get(completed.updated_at)
 
                 if in_progress:
@@ -122,8 +122,8 @@ class Repo:
         return url
 
     def on_click(self, sender):
-        if self.actions_url:
-            webbrowser.open(self.actions_url.url)
+        if self.last_run_url:
+            webbrowser.open(self.last_run_url.url)
 
     @staticmethod
     def _report_rate_limit_shortage(resp):
