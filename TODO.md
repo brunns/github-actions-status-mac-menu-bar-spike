@@ -7,7 +7,7 @@ I probably won't do any of these here - this is just a spike after all - but a r
 * Better structure - much better.
 * Configurability - repos to check, check interval.
     * (Including eventually a preferences UI - but a config file will do to start with).
-* [CLI options](https://docs.python.org/3/library/argparse.html), overriding config.
 * Deal with multiple workflows per repo.
 * Pause/restart app.
 * Trigger workflow runs.
+* What's up with the threads hanging?

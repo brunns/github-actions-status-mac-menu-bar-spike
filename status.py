@@ -1,6 +1,11 @@
+import argparse
+import logging
+import sys
+import warnings
 import webbrowser
 from dataclasses import dataclass
 from itertools import dropwhile
+from typing import MutableSequence, Optional, Sequence
 
 import arrow
 import requests
@@ -10,7 +15,9 @@ from furl import furl
 from ordered_enum import OrderedEnum
 from requests import HTTPError
 
-rumps.debug_mode(True)
+logger = logging.getLogger(__name__)
+
+VERSION = "0.1.0"
 
 REPOS = [
     ("brunns", "mbtest"),
@@ -18,17 +25,23 @@ REPOS = [
     ("brunns", "PyHamcrest"),
     ("hamcrest", "PyHamcrest"),
     ("brunns", "github-actions-status-mac-menu-bar-spike"),
+    # ("boicy", "SimEnterprise"),
 ]
 DATE_FORMAT = "DD/MM/YY HH:mm"
 
 
 def main():
-    global app
+    args = parse_args()
+
     app = StatusApp()
 
     for owner, name in sorted(REPOS):
         repo = Repo.build(name, owner)
         app.add(repo)
+
+    checker = GithubActionsStatusChecker(app)
+    timer = rumps.Timer(checker.check, args.interval)
+    timer.start()
 
     app.run()
 
@@ -42,18 +55,17 @@ class Status(OrderedEnum):
     DISCONNECTED = "🚫"
 
 
-@rumps.timer(10)
-def check(sender):
-    previous_status = max(repo.status for repo in app.repos)
-    for repo in app.repos:
-        repo.check()
+class StatusApp:
+    def __init__(self):
+        self.app = rumps.App("Github Actions Status", Status.OK.value)
+        self.repos: MutableSequence["Repo"] = []
 
-    status = max(repo.status for repo in app.repos)
-    app.app.title = status.value
-    if status == Status.FAILED and previous_status in (Status.OK, Status.RUNNING_FROM_OK):
-        rumps.notification(
-            title="Oooops...", subtitle="It's gone wrong again.", message="Now go and fix it."
-        )
+    def run(self):
+        self.app.run()
+
+    def add(self, repo: "Repo"):
+        self.repos.append(repo)
+        self.app.menu.add(repo.menu_item)
 
 
 @dataclass
@@ -67,7 +79,7 @@ class Repo:
     last_run: arrow.arrow = None
 
     @classmethod
-    def build(cls, name, owner):
+    def build(cls, name, owner) -> "Repo":
         menu_item = rumps.MenuItem(f"{owner}/{name}")
         repo = cls(owner, name, menu_item)
         repo.menu_item.set_callback(repo.on_click)
@@ -91,25 +103,25 @@ class Repo:
                 else:
                     self.status = Status.OK if completed.conclusion == "success" else Status.FAILED
         except HTTPError as e:
-            print(e)
+            logger.exception(e)
             self.status = Status.DISCONNECTED
 
         self.menu_item.title = f"{self.status.value} {self.owner}/{self.repo}"
         # self.menu_item.title = f"{self.status.value} {self.owner}/{self.repo} - {self.last_run.format(DATE_FORMAT)}"
 
-    def get_new_runs(self):
+    def get_new_runs(self) -> Optional[Sequence[Box]]:
         headers = {"If-None-Match": self.etag} if self.etag else {}
 
         resp = requests.get(self.github_api_list_workflow_runs_url(), headers=headers)
 
-        self._report_rate_limit_shortage(resp)
-
         resp.raise_for_status()
+        self._report_rate_limit_shortage(resp)
         self.etag = resp.headers["ETag"]
 
         if resp.status_code == 304:
             return None
         else:
+            logger.info(f"Updates to %s/%s detected", self.owner, self.repo)
             all = [Box(r) for r in resp.json()["workflow_runs"]]
             started = dropwhile(lambda r: r.status == "queued", all)
             return list(take_until(lambda r: r.status == "completed", started))
@@ -127,24 +139,30 @@ class Repo:
 
     @staticmethod
     def _report_rate_limit_shortage(resp):
-        remaining_ = int(resp.headers["X-RateLimit-Remaining"])
-        limit_ = int(resp.headers["X-RateLimit-Limit"])
-        reset_ = arrow.get(int(resp.headers["X-RateLimit-Reset"]))
-        if remaining_ <= (limit_ / 3):
-            print(f"rate limit remaining {remaining_}, refreshes at {reset_}")
+        if logger.level >= logging.WARNING:
+            remaining_ = int(resp.headers["X-RateLimit-Remaining"])
+            limit_ = int(resp.headers["X-RateLimit-Limit"])
+            reset_ = arrow.get(int(resp.headers["X-RateLimit-Reset"]))
+            if remaining_ <= (limit_ / 3):
+                logger.warn(f"rate limit remaining {remaining_}, refreshes at {reset_}")
 
 
-class StatusApp:
-    def __init__(self):
-        self.app = rumps.App("Github Actions Status", Status.OK.value)
-        self.repos = []
+class GithubActionsStatusChecker:
+    def __init__(self, app: StatusApp) -> None:
+        super().__init__()
+        self.app = app
 
-    def run(self):
-        self.app.run()
+    def check(self, sender):
+        previous_status = max(repo.status for repo in self.app.repos)
+        for repo in self.app.repos:
+            repo.check()
 
-    def add(self, repo):
-        self.repos.append(repo)
-        self.app.menu.add(repo.menu_item)
+        status = max(repo.status for repo in self.app.repos)
+        self.app.app.title = status.value
+        if status == Status.FAILED and previous_status in (Status.OK, Status.RUNNING_FROM_OK):
+            rumps.notification(
+                title="Oooops...", subtitle="It's gone wrong again.", message="Now go and fix it."
+            )
 
 
 def take_until(predicate, iterable):
@@ -152,6 +170,52 @@ def take_until(predicate, iterable):
         yield i
         if predicate(i):
             break
+
+
+def parse_args():
+    args = create_parser().parse_args()
+    init_logging(args.verbosity, silence_packages=["urllib3"])
+    logger.debug("args: %s", args)
+
+    return args
+
+
+def create_parser():
+    parser = argparse.ArgumentParser(description="Display status of GitHub Actions..")
+
+    parser.add_argument(
+        "-i",
+        "--interval",
+        type=int,
+        default=15,
+        help="check interval in seconds. Default: %(default)ss",
+    )
+
+    parser.add_argument(
+        "-v",
+        "--verbosity",
+        action="count",
+        default=0,
+        help="specify up to three times to increase verbosity, "
+        "i.e. -v to see warnings, -vv for information messages, or -vvv for debug messages.",
+    )
+    parser.add_argument("-V", "--version", action="version", version=VERSION)
+
+    return parser
+
+
+def init_logging(verbosity, stream=sys.stdout, silence_packages=()):
+    LOG_LEVELS = [logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG]
+    level = LOG_LEVELS[min(verbosity, len(LOG_LEVELS) - 1)]
+    msg_format = "%(message)s"
+    if level == logging.DEBUG:
+        warnings.filterwarnings("ignore")
+        msg_format = "%(asctime)s %(levelname)-8s %(name)s %(module)s.py:%(funcName)s():%(lineno)d %(message)s"
+        rumps.debug_mode(True)
+    logging.basicConfig(level=level, format=msg_format, stream=stream)
+
+    for package in silence_packages:
+        logging.getLogger(package).setLevel(max([level, logging.WARNING]))
 
 
 if __name__ == "__main__":
