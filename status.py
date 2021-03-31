@@ -115,7 +115,7 @@ class Repo:
         resp = requests.get(self.github_api_list_workflow_runs_url(), headers=headers)
 
         resp.raise_for_status()
-        self._report_rate_limit_shortage(resp)
+        self._log_rate_limit_stats(resp)
         self.etag = resp.headers["ETag"]
 
         if resp.status_code == 304:
@@ -138,13 +138,14 @@ class Repo:
             webbrowser.open(self.last_run_url.url)
 
     @staticmethod
-    def _report_rate_limit_shortage(resp):
-        if logger.level >= logging.WARNING:
-            remaining_ = int(resp.headers["X-RateLimit-Remaining"])
-            limit_ = int(resp.headers["X-RateLimit-Limit"])
-            reset_ = arrow.get(int(resp.headers["X-RateLimit-Reset"]))
-            if remaining_ <= (limit_ / 3):
-                logger.warn(f"rate limit remaining {remaining_}, refreshes at {reset_}")
+    def _log_rate_limit_stats(resp):
+        remaining_ = int(resp.headers["X-RateLimit-Remaining"])
+        limit_ = int(resp.headers["X-RateLimit-Limit"])
+        reset_ = arrow.get(int(resp.headers["X-RateLimit-Reset"]))
+        if logger.root.level <= logging.WARNING and remaining_ <= (limit_ / 3):
+            logger.warn(f"rate limit {remaining_} remaining of {limit_}, refreshes at {reset_}")
+        elif logger.root.level <= logging.DEBUG:
+            logger.debug(f"rate limit {remaining_} remaining of {limit_}, refreshes at {reset_}")
 
 
 class GithubActionsStatusChecker:
