@@ -106,8 +106,8 @@ class Repo:
             logger.exception(e)
             self.status = Status.DISCONNECTED
 
-        self.menu_item.title = f"{self.status.value} {self.owner}/{self.repo}"
-        # self.menu_item.title = f"{self.status.value} {self.owner}/{self.repo} - {self.last_run.format(DATE_FORMAT)}"
+        # self.menu_item.title = f"{self.status.value} {self.owner}/{self.repo}"
+        self.menu_item.title = f"{self.status.value} {self.owner}/{self.repo} - {self.last_run.format(DATE_FORMAT)}"
 
     def get_new_runs(self) -> Optional[Sequence[Box]]:
         headers = {"If-None-Match": self.etag} if self.etag else {}
@@ -119,9 +119,10 @@ class Repo:
         self.etag = resp.headers["ETag"]
 
         if resp.status_code == 304:
+            logger.debug(f"no updates to %s/%s detected", self.owner, self.repo)
             return None
         else:
-            logger.info(f"Updates to %s/%s detected", self.owner, self.repo)
+            logger.info(f"updates to %s/%s detected", self.owner, self.repo)
             all = [Box(r) for r in resp.json()["workflow_runs"]]
             started = dropwhile(lambda r: r.status == "queued", all)
             return list(take_until(lambda r: r.status == "completed", started))
@@ -139,18 +140,17 @@ class Repo:
 
     @staticmethod
     def _log_rate_limit_stats(resp):
-        remaining_ = int(resp.headers["X-RateLimit-Remaining"])
-        limit_ = int(resp.headers["X-RateLimit-Limit"])
-        reset_ = arrow.get(int(resp.headers["X-RateLimit-Reset"]))
-        if logger.root.level <= logging.WARNING and remaining_ <= (limit_ / 3):
-            logger.warn(f"rate limit {remaining_} remaining of {limit_}, refreshes at {reset_}")
+        remaining = int(resp.headers["X-RateLimit-Remaining"])
+        limit = int(resp.headers["X-RateLimit-Limit"])
+        reset = arrow.get(int(resp.headers["X-RateLimit-Reset"]))
+        if logger.root.level <= logging.WARNING and remaining <= (limit / 3):
+            logger.warning(f"rate limit {remaining} remaining of {limit}, refreshes at {reset}")
         elif logger.root.level <= logging.DEBUG:
-            logger.debug(f"rate limit {remaining_} remaining of {limit_}, refreshes at {reset_}")
+            logger.info(f"rate limit {remaining} remaining of {limit}, refreshes at {reset}")
 
 
 class GithubActionsStatusChecker:
     def __init__(self, app: StatusApp) -> None:
-        super().__init__()
         self.app = app
 
     def check(self, sender):
