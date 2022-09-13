@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import argparse
 import logging
 import sys
@@ -74,9 +75,9 @@ class Repo:
     repo: str
     menu_item: rumps.MenuItem
     status: Status = Status.OK
-    last_run_url: furl = None
-    etag: str = None
-    last_run: arrow.arrow = None
+    last_run_url: Optional[furl] = None
+    etag: Optional[str] = None
+    last_run: Optional[arrow.arrow] = None
 
     @classmethod
     def build(cls, name, owner) -> "Repo":
@@ -105,9 +106,10 @@ class Repo:
         except HTTPError as e:
             logger.exception(e)
             self.status = Status.DISCONNECTED
+            self.etag = None
 
         # self.menu_item.title = f"{self.status.value} {self.owner}/{self.repo}"
-        self.menu_item.title = f"{self.status.value} {self.owner}/{self.repo} - {self.last_run.format(DATE_FORMAT)}"
+        self.menu_item.title = f"{self.status.value} {self.owner}/{self.repo} @ {self.last_run.format(DATE_FORMAT)}"
 
     def get_new_runs(self) -> Optional[Sequence[Box]]:
         headers = {"If-None-Match": self.etag} if self.etag else {}
@@ -127,7 +129,7 @@ class Repo:
             started = dropwhile(lambda r: r.status == "queued", all)
             return list(take_until(lambda r: r.status == "completed", started))
 
-    def github_api_list_workflow_runs_url(self):
+    def github_api_list_workflow_runs_url(self) -> furl:
         # See https://docs.github.com/en/rest/reference/actions#list-workflow-runs-for-a-repository for docs
         url = furl("https://api.github.com/repos/") / self.owner / self.repo / "actions/runs"
         url.args["accept"] = "application/vnd.github.v3+json"
