@@ -1,0 +1,26 @@
+{
+  "repos": [
+    {
+      "owner": "brunns",
+      "name": "mbtest"
+    },
+    {
+      "owner": "brunns",
+      "name": "brunns-matchers"
+    },
+    {
+      "owner": "brunns",
+      "name": "PyHamcrest"
+    },
+    {
+      "owner": "hamcrest",
+      "name": "PyHamcrest"
+    },
+    {
+      "owner": "brunns",
+      "name": "github-actions-status-mac-menu-bar-spike"
+    }
+  ],
+  "interval": 15,
+  "dateformat": "DD/MM/YY HH:mm"
+}

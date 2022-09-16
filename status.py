@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import argparse
+import json
 import logging
 import sys
 import warnings
@@ -18,30 +19,21 @@ from requests import HTTPError
 
 logger = logging.getLogger(__name__)
 
-VERSION = "0.1.0"
-
-REPOS = [
-    ("brunns", "mbtest"),
-    ("brunns", "brunns-matchers"),
-    ("brunns", "PyHamcrest"),
-    ("hamcrest", "PyHamcrest"),
-    ("brunns", "github-actions-status-mac-menu-bar-spike"),
-    # ("boicy", "SimEnterprise"),
-]
-DATE_FORMAT = "DD/MM/YY HH:mm"
+VERSION = "0.2.0"
 
 
 def main():
     args = parse_args()
+    config = json.load(args.config)
 
     app = StatusApp()
 
-    for owner, name in sorted(REPOS):
-        repo = Repo.build(name, owner)
+    for repo in config["repos"]:
+        repo = Repo.build(**repo, dateformat=config["dateformat"])
         app.add(repo)
 
     checker = GithubActionsStatusChecker(app)
-    timer = rumps.Timer(checker.check, args.interval)
+    timer = rumps.Timer(checker.check, args.interval or config["interval"])
     timer.start()
 
     app.run()
@@ -73,16 +65,17 @@ class StatusApp:
 class Repo:
     owner: str
     repo: str
+    dateformat: str
     menu_item: rumps.MenuItem
     status: Status = Status.OK
     last_run_url: Optional[furl] = None
     etag: Optional[str] = None
-    last_run: Optional[arrow.arrow] = None
+    last_run: Optional[arrow.arrow.Arrow] = None
 
     @classmethod
-    def build(cls, name, owner) -> "Repo":
+    def build(cls, name, owner, dateformat) -> "Repo":
         menu_item = rumps.MenuItem(f"{owner}/{name}")
-        repo = cls(owner, name, menu_item)
+        repo = cls(owner, name, dateformat, menu_item)
         repo.menu_item.set_callback(repo.on_click)
         return repo
 
@@ -109,7 +102,7 @@ class Repo:
             self.etag = None
 
         # self.menu_item.title = f"{self.status.value} {self.owner}/{self.repo}"
-        self.menu_item.title = f"{self.status.value} {self.owner}/{self.repo} @ {self.last_run.format(DATE_FORMAT)}"
+        self.menu_item.title = f"{self.status.value} {self.owner}/{self.repo} @ {self.last_run.format(self.dateformat)}"
 
     def get_new_runs(self) -> Optional[Sequence[Box]]:
         headers = {"If-None-Match": self.etag} if self.etag else {}
@@ -187,11 +180,18 @@ def create_parser():
     parser = argparse.ArgumentParser(description="Display status of GitHub Actions..")
 
     parser.add_argument(
+        "-c",
+        "--config",
+        type=argparse.FileType('r'),
+        default="config.json",
+        help="config file. Default: %(default)s",
+    )
+    parser.add_argument(
         "-i",
         "--interval",
         type=int,
-        default=15,
-        help="check interval in seconds. Default: %(default)ss",
+        default=0,
+        help="check interval in seconds. (Overrides value from config file if non-zero.) Default: %(default)s",
     )
 
     parser.add_argument(
