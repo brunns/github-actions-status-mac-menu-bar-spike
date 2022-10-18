@@ -1,5 +1,5 @@
 requests~=2.25
-rumps~=0.3
+rumps~=0.4
 furl~=2.1
 python-box~=6.0
 ordered-enum~=0.0.6

@@ -24,7 +24,9 @@ VERSION = "0.2.0"
 
 def main():
     args = parse_args()
+    logger.debug("args: %s", args)
     config = json.load(args.config)
+    logger.debug("config: %s", config)
 
     app = StatusApp()
 
@@ -36,7 +38,7 @@ def main():
     timer = rumps.Timer(checker.check, args.interval or config["interval"])
     timer.start()
 
-    app.run()
+    app.run(debug=logger.root.level <= logging.DEBUG)
 
 
 class Status(OrderedEnum):
@@ -53,8 +55,8 @@ class StatusApp:
         self.app = rumps.App("Github Actions Status", Status.OK.value)
         self.repos: MutableSequence["Repo"] = []
 
-    def run(self):
-        self.app.run()
+    def run(self, debug=False):
+        self.app.run(debug=debug)
 
     def add(self, repo: "Repo"):
         self.repos.append(repo)
@@ -67,19 +69,20 @@ class Repo:
     repo: str
     dateformat: str
     menu_item: rumps.MenuItem
-    status: Status = Status.OK
+    status: Status = Status.DISCONNECTED
     last_run_url: Optional[furl] = None
     etag: Optional[str] = None
     last_run: Optional[arrow.arrow.Arrow] = None
 
     @classmethod
-    def build(cls, name, owner, dateformat) -> "Repo":
-        menu_item = rumps.MenuItem(f"{owner}/{name}")
-        repo = cls(owner, name, dateformat, menu_item)
+    def build(cls, owner, repo, dateformat) -> "Repo":
+        menu_item = rumps.MenuItem(f"{owner}/{repo}")
+        repo = cls(owner, repo, dateformat, menu_item)
         repo.menu_item.set_callback(repo.on_click)
         return repo
 
     def check(self):
+        previous_status = self.status
         try:
             new_runs = self.get_new_runs()
             if new_runs:
@@ -101,10 +104,12 @@ class Repo:
             self.status = Status.DISCONNECTED
             self.etag = None
 
+        if self.status != previous_status:
+            logger.info("Repo %s/%s status now %s",  self.owner, self.repo, self.status)
         # self.menu_item.title = f"{self.status.value} {self.owner}/{self.repo}"
         self.menu_item.title = f"{self.status.value} {self.owner}/{self.repo} @ {self.last_run.format(self.dateformat)}"
 
-    def get_new_runs(self) -> Optional[Sequence[Box]]:
+    def get_new_runs(self) -> Sequence[Box]:
         headers = {"If-None-Match": self.etag} if self.etag else {}
 
         resp = requests.get(self.github_api_list_workflow_runs_url(), headers=headers)
@@ -114,10 +119,10 @@ class Repo:
         self.etag = resp.headers["ETag"]
 
         if resp.status_code == 304:
-            logger.debug(f"no updates to %s/%s detected", self.owner, self.repo)
-            return None
+            logger.debug(f"no updates to %s detected", self)
+            return []
         else:
-            logger.info(f"updates to %s/%s detected", self.owner, self.repo)
+            logger.debug(f"updates to %s detected", self)
             all = [Box(r) for r in resp.json()["workflow_runs"]]
             started = dropwhile(lambda r: r.status == "queued", all)
             return list(take_until(lambda r: r.status == "completed", started))
@@ -138,10 +143,7 @@ class Repo:
         remaining = int(resp.headers["X-RateLimit-Remaining"])
         limit = int(resp.headers["X-RateLimit-Limit"])
         reset = arrow.get(int(resp.headers["X-RateLimit-Reset"]))
-        if logger.root.level <= logging.WARNING and remaining <= (limit / 3):
-            logger.warning(f"rate limit {remaining} remaining of {limit}, refreshes at {reset}")
-        elif logger.root.level <= logging.DEBUG:
-            logger.info(f"rate limit {remaining} remaining of {limit}, refreshes at {reset}")
+        (logger.warning if remaining <= (limit / 4) else logger.debug)("rate limit %s remaining of %s, refreshes at %s", remaining, limit, reset)
 
 
 class GithubActionsStatusChecker:
@@ -155,7 +157,7 @@ class GithubActionsStatusChecker:
 
         status = max(repo.status for repo in self.app.repos)
         self.app.app.title = status.value
-        if status == Status.FAILED and previous_status in (Status.OK, Status.RUNNING_FROM_OK):
+        if status not in (Status.OK, Status.RUNNING_FROM_OK) and previous_status in (Status.OK, Status.RUNNING_FROM_OK):
             rumps.notification(
                 title="Oooops...", subtitle="It's gone wrong again.", message="Now go and fix it."
             )
@@ -171,7 +173,6 @@ def take_until(predicate, iterable):
 def parse_args():
     args = create_parser().parse_args()
     init_logging(args.verbosity, silence_packages=["urllib3"])
-    logger.debug("args: %s", args)
 
     return args
 

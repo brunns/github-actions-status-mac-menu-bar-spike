@@ -2,23 +2,23 @@
   "repos": [
     {
       "owner": "brunns",
-      "name": "mbtest"
+      "repo": "mbtest"
     },
     {
       "owner": "brunns",
-      "name": "brunns-matchers"
+      "repo": "brunns-matchers"
     },
     {
       "owner": "brunns",
-      "name": "PyHamcrest"
+      "repo": "PyHamcrest"
     },
     {
       "owner": "hamcrest",
-      "name": "PyHamcrest"
+      "repo": "PyHamcrest"
     },
     {
       "owner": "brunns",
-      "name": "github-actions-status-mac-menu-bar-spike"
+      "repo": "github-actions-status-mac-menu-bar-spike"
     }
   ],
   "interval": 15,
