@@ -20,6 +20,7 @@ from requests import HTTPError
 logger = logging.getLogger(__name__)
 
 VERSION = "0.2.0"
+LOCALTZ = arrow.now().tzinfo
 
 
 def main():
@@ -89,7 +90,7 @@ class Repo:
                 *in_progress, completed = new_runs
 
                 self.last_run_url = furl(completed.html_url)
-                self.last_run = arrow.get(completed.updated_at)
+                self.last_run = arrow.get(completed.updated_at).to(LOCALTZ)
 
                 if in_progress:
                     self.status = (
