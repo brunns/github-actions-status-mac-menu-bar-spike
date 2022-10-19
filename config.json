@@ -10,6 +10,14 @@
     },
     {
       "owner": "brunns",
+      "repo": "brunns-row"
+    },
+    {
+      "owner": "brunns",
+      "repo": "brunns-builder"
+    },
+    {
+      "owner": "brunns",
       "repo": "PyHamcrest"
     },
     {
