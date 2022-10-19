@@ -100,7 +100,7 @@ class Repo:
                     )
                 else:
                     self.status = Status.OK if completed.conclusion == "success" else Status.FAILED
-        except HTTPError as e:
+        except (HTTPError, RepoRunException) as e:
             logger.exception(e)
             self.status = Status.DISCONNECTED
             self.etag = None
@@ -108,7 +108,7 @@ class Repo:
         if self.status != previous_status:
             logger.info("Repo %s/%s status now %s",  self.owner, self.repo, self.status)
         # self.menu_item.title = f"{self.status.value} {self.owner}/{self.repo}"
-        self.menu_item.title = f"{self.status.value} {self.owner}/{self.repo} @ {self.last_run.format(self.dateformat)}"
+        self.menu_item.title = f"{self.status.value} {self.owner}/{self.repo} @ {self.last_run.format(self.dateformat) if self.last_run else 'never'}"
 
     def get_new_runs(self) -> Sequence[Box]:
         headers = {"If-None-Match": self.etag} if self.etag else {}
@@ -124,7 +124,10 @@ class Repo:
             return []
         else:
             logger.debug(f"updates to %s detected", self)
-            all = [Box(r) for r in resp.json()["workflow_runs"]]
+            resp_json = resp.json()
+            if not resp_json['total_count']:
+                raise RepoRunException("No repo runs detected.")
+            all = [Box(r) for r in resp_json["workflow_runs"]]
             started = dropwhile(lambda r: r.status == "queued", all)
             return list(take_until(lambda r: r.status == "completed", started))
 
@@ -145,6 +148,10 @@ class Repo:
         limit = int(resp.headers["X-RateLimit-Limit"])
         reset = arrow.get(int(resp.headers["X-RateLimit-Reset"]))
         (logger.warning if remaining <= (limit / 4) else logger.debug)("rate limit %s remaining of %s, refreshes at %s", remaining, limit, reset)
+
+
+class RepoRunException(Exception):
+    pass
 
 
 class GithubActionsStatusChecker:
