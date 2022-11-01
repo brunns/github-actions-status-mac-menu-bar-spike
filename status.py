@@ -142,12 +142,11 @@ class Repo:
         if self.last_run_url:
             webbrowser.open(self.last_run_url.url)
 
-    @staticmethod
-    def _log_rate_limit_stats(resp):
+    def _log_rate_limit_stats(self, resp):
         remaining = int(resp.headers["X-RateLimit-Remaining"])
         limit = int(resp.headers["X-RateLimit-Limit"])
-        reset = arrow.get(int(resp.headers["X-RateLimit-Reset"]))
-        (logger.warning if remaining <= (limit / 4) else logger.debug)("rate limit %s remaining of %s, refreshes at %s", remaining, limit, reset)
+        reset = arrow.get(int(resp.headers["X-RateLimit-Reset"])).to(LOCALTZ)
+        (logger.warning if remaining <= (limit / 4) else logger.debug)("rate limit %s remaining of %s, refreshes at %s", remaining, limit, reset.format(self.dateformat))
 
 
 class RepoRunException(Exception):
