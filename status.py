@@ -2,6 +2,7 @@
 import argparse
 import json
 import logging
+import os
 import sys
 import warnings
 import webbrowser
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 VERSION = "0.2.0"
 LOCALTZ = arrow.now().tzinfo
+AS_PY2APP = bool(os.environ.get('AS_PY2APP', False))
 DEFAULT_CONFIG = json.dumps(
     {"repos": [{"owner": "brunns", "repo": "mbtest"}, {"owner": "hamcrest", "repo": "PyHamcrest"}],
      "interval": 15,
@@ -31,6 +33,7 @@ DEFAULT_CONFIG = json.dumps(
 def main():
     args = parse_args()
     logger.debug("args: %s", args)
+    logger.debug("AS_PY2APP: %s", AS_PY2APP)
     config = json.load(args.config)
     logger.debug("config: %s", config)
 

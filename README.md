@@ -7,8 +7,12 @@ This is **very** much spike code - no tests, hard-coding everywhere, and the str
 The list of repos to check is in `config.json`, anong with the check interval and the date format to show.
 
 To run:
-
-    python3 -m venv venv  ## Only up to Python 3.9 for now - rumps doesn't work under 3.10
+    pyenv local system
+    python3 -m venv venv
     source venv/bin/activate
     pip install -r requirements.txt --upgrade
-    python status.py
+    python3 status.py -vvv
+
+To build app:
+
+    python3 setup.py py2app -A
