@@ -7,6 +7,7 @@ import warnings
 import webbrowser
 from dataclasses import dataclass
 from itertools import dropwhile
+from pathlib import Path
 from typing import MutableSequence, Optional, Sequence
 
 import arrow
@@ -21,6 +22,10 @@ logger = logging.getLogger(__name__)
 
 VERSION = "0.2.0"
 LOCALTZ = arrow.now().tzinfo
+DEFAULT_CONFIG = json.dumps(
+    {"repos": [{"owner": "brunns", "repo": "mbtest"}, {"owner": "hamcrest", "repo": "PyHamcrest"}],
+     "interval": 15,
+     "dateformat": "DD/MM/YY HH:mm"}, indent=4)
 
 
 def main():
@@ -190,7 +195,7 @@ def create_parser():
     parser.add_argument(
         "-c",
         "--config",
-        type=argparse.FileType('r'),
+        type=FileTypeWithWrittenDefault('r', default=DEFAULT_CONFIG),
         default="config.json",
         help="config file. Default: %(default)s",
     )
@@ -213,6 +218,21 @@ def create_parser():
     parser.add_argument("-V", "--version", action="version", version=VERSION)
 
     return parser
+
+
+class FileTypeWithWrittenDefault(argparse.FileType):
+    as_ = """As argparse.FileType, but if read mode file doesn't exist, create it using default value."""
+
+    def __init__(self, mode='r', bufsize=-1, encoding=None, errors=None, default=None):
+        super(FileTypeWithWrittenDefault, self).__init__(mode=mode, bufsize=bufsize, encoding=encoding, errors=errors)
+        self._default = default
+
+    def __call__(self, string):
+        path = Path(string)
+        if string != '-' and self._mode == 'r' and not path.is_file():
+            with path.open('w') as f: 
+                f.write(self._default or '')
+        return super(FileTypeWithWrittenDefault, self).__call__(string)
 
 
 def init_logging(verbosity, stream=sys.stdout, silence_packages=()):
