@@ -21,7 +21,7 @@ from requests import HTTPError
 
 logger = logging.getLogger(__name__)
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 LOCALTZ = arrow.now().tzinfo
 AS_APP = hasattr(sys, "frozen") and sys.frozen == 'macosx_app'
 DEFAULT_CONFIG = json.dumps(
@@ -33,13 +33,7 @@ DEFAULT_CONFIG = json.dumps(
 
 def main():
     if AS_APP:
-        config_path = Path.home() / '.github_actions_status_config.json'
-        if not config_path.is_file():
-            with config_path.open('w') as f:
-                f.write(DEFAULT_CONFIG)
-        with config_path.open('r') as f:
-            config = json.load(f)
-        init_logging(config["verbosity"])
+        config = get_config_from_config_file('.github_actions_status_config.json', DEFAULT_CONFIG)
         interval = config["interval"]
     else:
         args = parse_args()
@@ -195,6 +189,17 @@ def take_until(predicate, iterable):
         yield i
         if predicate(i):
             break
+
+
+def get_config_from_config_file(filename, default):
+    config_path = Path.home() / filename
+    if not config_path.is_file():
+        with config_path.open('w') as f:
+            f.write(default)
+    with config_path.open('r') as f:
+        config = json.load(f)
+    init_logging(config["verbosity"], silence_packages=["urllib3"])
+    return config
 
 
 def parse_args():
