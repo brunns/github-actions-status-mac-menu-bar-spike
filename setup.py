@@ -14,12 +14,11 @@ OPTIONS = {
     'argv_emulation': True,
     'plist': {
         'LSUIElement': True,
-        'LSEnvironment': {'AS_PY2APP': 'true'},
     },
 }
 
 setup(
-    name="Github Actions Status",
+    name="Github_Actions_Status",
     app=APP,
     data_files=DATA_FILES,
     options={'py2app': OPTIONS},

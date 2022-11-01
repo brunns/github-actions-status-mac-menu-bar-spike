@@ -23,18 +23,30 @@ logger = logging.getLogger(__name__)
 
 VERSION = "0.2.0"
 LOCALTZ = arrow.now().tzinfo
-AS_PY2APP = bool(os.environ.get('AS_PY2APP', False))
+AS_APP = hasattr(sys, "frozen") and sys.frozen == 'macosx_app'
 DEFAULT_CONFIG = json.dumps(
     {"repos": [{"owner": "brunns", "repo": "mbtest"}, {"owner": "hamcrest", "repo": "PyHamcrest"}],
      "interval": 15,
-     "dateformat": "DD/MM/YY HH:mm"}, indent=4)
+     "dateformat": "DD/MM/YY HH:mm",
+     "verbosity": 2}, indent=4)
 
 
 def main():
-    args = parse_args()
-    logger.debug("args: %s", args)
-    logger.debug("AS_PY2APP: %s", AS_PY2APP)
-    config = json.load(args.config)
+    if AS_APP:
+        config_path = Path.home() / '.github_actions_status_config.json'
+        if not config_path.is_file():
+            with config_path.open('w') as f:
+                f.write(DEFAULT_CONFIG)
+        with config_path.open('r') as f:
+            config = json.load(f)
+        init_logging(config["verbosity"])
+        interval = config["interval"]
+    else:
+        args = parse_args()
+        logger.debug("args: %s", args)
+        config = json.load(args.config)
+        interval = args.interval or config["interval"]
+
     logger.debug("config: %s", config)
 
     app = StatusApp()
@@ -44,7 +56,7 @@ def main():
         app.add(repo)
 
     checker = GithubActionsStatusChecker(app)
-    timer = rumps.Timer(checker.check, args.interval or config["interval"])
+    timer = rumps.Timer(checker.check, interval)
     timer.start()
 
     app.run(debug=logger.root.level <= logging.DEBUG)

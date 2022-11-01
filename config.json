@@ -30,5 +30,6 @@
     }
   ],
   "interval": 15,
-  "dateformat": "DD/MM/YY HH:mm"
+  "dateformat": "DD/MM/YY HH:mm",
+  "verbosity": 3
 }
