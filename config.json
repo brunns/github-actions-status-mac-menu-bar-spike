@@ -29,7 +29,7 @@
       "repo": "github-actions-status-mac-menu-bar-spike"
     }
   ],
-  "interval": 15,
+  "interval": 60,
   "dateformat": "DD/MM/YY HH:mm",
   "verbosity": 3
 }

@@ -9,6 +9,7 @@ DEPENDENCIES = [
     'python-box',
     'ordered-enum',
     'arrow',
+    'contexttimer',
 ]
 OPTIONS = {
     'argv_emulation': True,

@@ -5,6 +5,7 @@ import logging
 import sys
 import warnings
 import webbrowser
+from contexttimer import timer, Timer
 from dataclasses import dataclass
 from functools import cached_property
 from itertools import dropwhile
@@ -30,7 +31,7 @@ LOCALTZ = arrow.now().tzinfo
 AS_APP = getattr(sys, "frozen", None) == 'macosx_app'
 DEFAULT_CONFIG = json.dumps(
     {"repos": [{"owner": "brunns", "repo": "mbtest"}, {"owner": "hamcrest", "repo": "PyHamcrest"}],
-     "interval": 15,
+     "interval": 60,
      "dateformat": "DD/MM/YY HH:mm",
      "verbosity": 2}, indent=4)
 
@@ -54,7 +55,7 @@ def main():
         app.add(repo)
 
     checker = GithubActionsStatusChecker(app)
-    timer = rumps.Timer(checker.check, interval)
+    timer = rumps.Timer(checker.check_all, interval)
     timer.start()
 
     app.run(debug=logger.root.level <= logging.DEBUG)
@@ -132,8 +133,9 @@ class Repo:
         headers = {"If-None-Match": self.etag} if self.etag else {}
 
         logging.log(TRACE, 'getting %s', self.github_api_list_workflow_runs_url)
-        resp = session.get(self.github_api_list_workflow_runs_url, headers=headers, timeout=5)
-        logging.log(TRACE, 'got %s', self.github_api_list_workflow_runs_url)
+        with Timer() as t:
+            resp = session.get(self.github_api_list_workflow_runs_url, headers=headers, timeout=5)
+        logging.log(TRACE, 'got %s in %s', self.github_api_list_workflow_runs_url, t.elapsed)
 
         resp.raise_for_status()
         self._log_rate_limit_stats(resp)
@@ -178,7 +180,8 @@ class GithubActionsStatusChecker:
     def __init__(self, app: StatusApp) -> None:
         self.app = app
 
-    def check(self, sender):
+    @timer(logger=logger, level=TRACE)
+    def check_all(self, sender):
         previous_status = max(repo.status for repo in self.app.repos)
 
         adapter = HTTPAdapter(max_retries=3)
