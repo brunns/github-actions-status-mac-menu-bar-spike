@@ -6,6 +6,7 @@ import sys
 import warnings
 import webbrowser
 from dataclasses import dataclass
+from functools import cached_property
 from itertools import dropwhile
 from pathlib import Path
 from typing import MutableSequence, Optional, Sequence
@@ -17,6 +18,7 @@ from box import Box
 from furl import furl
 from ordered_enum import OrderedEnum
 from requests import HTTPError
+from requests.adapters import HTTPAdapter
 
 TRACE = 5
 logging.addLevelName(TRACE, 'TRACE')
@@ -37,7 +39,7 @@ def main():
     if AS_APP:
         config = get_config_from_config_file('.github_actions_status_config.json', DEFAULT_CONFIG)
         interval = config["interval"]
-    else:
+    else:  # CLI
         args = parse_args()
         logger.debug("args: %s", args)
         config = json.load(args.config)
@@ -98,10 +100,10 @@ class Repo:
         repo.menu_item.set_callback(repo.on_click)
         return repo
 
-    def check(self):
+    def check(self, session):
         previous_status = self.status
         try:
-            new_runs = self.get_new_runs()
+            new_runs = self.get_new_runs(session)
             if new_runs:
                 *in_progress, completed = new_runs
 
@@ -126,12 +128,12 @@ class Repo:
         # self.menu_item.title = f"{self.status.value} {self.owner}/{self.repo}"
         self.menu_item.title = f"{self.status.value} {self.owner}/{self.repo} @ {self.last_run.format(self.dateformat) if self.last_run else 'never'}"
 
-    def get_new_runs(self) -> Sequence[Box]:
+    def get_new_runs(self, session) -> Sequence[Box]:
         headers = {"If-None-Match": self.etag} if self.etag else {}
 
-        logging.log(TRACE, 'getting %s', self.github_api_list_workflow_runs_url())
-        resp = requests.get(self.github_api_list_workflow_runs_url(), headers=headers)
-        logging.log(TRACE, 'got %s', self.github_api_list_workflow_runs_url())
+        logging.log(TRACE, 'getting %s', self.github_api_list_workflow_runs_url)
+        resp = session.get(self.github_api_list_workflow_runs_url, headers=headers, timeout=5)
+        logging.log(TRACE, 'got %s', self.github_api_list_workflow_runs_url)
 
         resp.raise_for_status()
         self._log_rate_limit_stats(resp)
@@ -149,6 +151,7 @@ class Repo:
             started = dropwhile(lambda r: r.status == "queued", all)
             return list(take_until(lambda r: r.status == "completed", started))
 
+    @cached_property
     def github_api_list_workflow_runs_url(self) -> furl:
         # See https://docs.github.com/en/rest/reference/actions#list-workflow-runs-for-a-repository for docs
         url = furl("https://api.github.com/repos/") / self.owner / self.repo / "actions/runs"
@@ -177,8 +180,13 @@ class GithubActionsStatusChecker:
 
     def check(self, sender):
         previous_status = max(repo.status for repo in self.app.repos)
-        for repo in self.app.repos:
-            repo.check()
+
+        adapter = HTTPAdapter(max_retries=3)
+        with requests.Session() as session:
+            session.mount("https://", adapter)
+
+            for repo in self.app.repos:
+                repo.check(session)
 
         status = max(repo.status for repo in self.app.repos)
         self.app.app.title = status.value
