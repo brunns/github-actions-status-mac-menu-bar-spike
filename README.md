@@ -22,3 +22,5 @@ To build as a .app bundle:
     # If you have activated the venv as above, you'll need to deactivate it to build.
     deactivate  
     python3 setup.py py2app  # .app will be found in the dist/ folder
+
+Thanks to [Freja Brunning](https://twitter.com/freja_brunning) for the icon.

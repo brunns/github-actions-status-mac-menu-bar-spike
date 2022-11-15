@@ -16,10 +16,11 @@ OPTIONS = {
     'plist': {
         'LSUIElement': True,
     },
+    'iconfile': 'assets/icon.icns',
 }
 
 setup(
-    name="Github_Actions_Status",
+    name="Github Actions Status",
     app=APP,
     data_files=DATA_FILES,
     options={'py2app': OPTIONS},
