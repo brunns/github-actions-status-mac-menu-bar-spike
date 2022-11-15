@@ -18,11 +18,14 @@ from furl import furl
 from ordered_enum import OrderedEnum
 from requests import HTTPError
 
+TRACE = 5
+logging.addLevelName(TRACE, 'TRACE')
+
 logger = logging.getLogger(__name__)
 
 VERSION = "0.3.0"
 LOCALTZ = arrow.now().tzinfo
-AS_APP = hasattr(sys, "frozen") and sys.frozen == 'macosx_app'
+AS_APP = getattr(sys, "frozen", None) == 'macosx_app'
 DEFAULT_CONFIG = json.dumps(
     {"repos": [{"owner": "brunns", "repo": "mbtest"}, {"owner": "hamcrest", "repo": "PyHamcrest"}],
      "interval": 15,
@@ -126,7 +129,9 @@ class Repo:
     def get_new_runs(self) -> Sequence[Box]:
         headers = {"If-None-Match": self.etag} if self.etag else {}
 
+        logging.log(TRACE, 'getting %s', self.github_api_list_workflow_runs_url())
         resp = requests.get(self.github_api_list_workflow_runs_url(), headers=headers)
+        logging.log(TRACE, 'got %s', self.github_api_list_workflow_runs_url())
 
         resp.raise_for_status()
         self._log_rate_limit_stats(resp)
@@ -231,8 +236,8 @@ def create_parser():
         "--verbosity",
         action="count",
         default=0,
-        help="specify up to three times to increase verbosity, "
-        "i.e. -v to see warnings, -vv for information messages, or -vvv for debug messages.",
+        help="specify up to four times to increase verbosity, "
+        "i.e. -v to see warnings, -vv for information messages, -vvv for debug messages, or -vvvv for trace messages.",
     )
     parser.add_argument("-V", "--version", action="version", version=VERSION)
 
@@ -255,10 +260,10 @@ class FileTypeWithWrittenDefault(argparse.FileType):
 
 
 def init_logging(verbosity, stream=sys.stdout, silence_packages=()):
-    LOG_LEVELS = [logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG]
+    LOG_LEVELS = [logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG, TRACE]
     level = LOG_LEVELS[min(verbosity, len(LOG_LEVELS) - 1)]
     msg_format = "%(message)s"
-    if level == logging.DEBUG:
+    if level <= logging.DEBUG:
         warnings.filterwarnings("ignore")
         msg_format = "%(asctime)s %(levelname)-8s %(name)s %(module)s.py:%(funcName)s():%(lineno)d %(message)s"
         rumps.debug_mode(True)
