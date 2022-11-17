@@ -10,6 +10,7 @@ DEPENDENCIES = [
     'ordered-enum',
     'arrow',
     'contexttimer',
+    'humanize',
 ]
 OPTIONS = {
     'argv_emulation': True,

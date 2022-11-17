@@ -5,17 +5,20 @@ import logging
 import sys
 import warnings
 import webbrowser
-from contexttimer import timer, Timer
+
+import arrow
+import humanize
+import requests
+import rumps
+
 from dataclasses import dataclass
 from functools import cached_property
 from itertools import dropwhile
 from pathlib import Path
 from typing import MutableSequence, Optional, Sequence
 
-import arrow
-import requests
-import rumps
 from box import Box
+from contexttimer import timer, Timer
 from furl import furl
 from ordered_enum import OrderedEnum
 from requests import HTTPError
@@ -32,7 +35,6 @@ AS_APP = getattr(sys, "frozen", None) == 'macosx_app'
 DEFAULT_CONFIG = json.dumps(
     {"repos": [{"owner": "brunns", "repo": "mbtest"}, {"owner": "hamcrest", "repo": "PyHamcrest"}],
      "interval": 60,
-     "dateformat": "DD/MM/YY HH:mm",
      "verbosity": 2}, indent=4)
 
 
@@ -51,7 +53,7 @@ def main():
     app = StatusApp()
 
     for repo in config["repos"]:
-        repo = Repo.build(**repo, dateformat=config["dateformat"])
+        repo = Repo.build(**repo)
         app.add(repo)
 
     checker = GithubActionsStatusChecker(app)
@@ -87,7 +89,6 @@ class StatusApp:
 class Repo:
     owner: str
     repo: str
-    dateformat: str
     menu_item: rumps.MenuItem
     status: Status = Status.DISCONNECTED
     last_run_url: Optional[furl] = None
@@ -95,9 +96,9 @@ class Repo:
     last_run: Optional[arrow.arrow.Arrow] = None
 
     @classmethod
-    def build(cls, owner, repo, dateformat) -> "Repo":
+    def build(cls, owner, repo) -> "Repo":
         menu_item = rumps.MenuItem(f"{owner}/{repo}")
-        repo = cls(owner, repo, dateformat, menu_item)
+        repo = cls(owner, repo, menu_item)
         repo.menu_item.set_callback(repo.on_click)
         return repo
 
@@ -126,8 +127,9 @@ class Repo:
 
         if self.status != previous_status:
             logger.info("Repo %s/%s status now %s",  self.owner, self.repo, self.status)
-        # self.menu_item.title = f"{self.status.value} {self.owner}/{self.repo}"
-        self.menu_item.title = f"{self.status.value} {self.owner}/{self.repo} @ {self.last_run.format(self.dateformat) if self.last_run else 'never'}"
+
+        last_run_formatted = humanize.naturaldelta(arrow.utcnow() - self.last_run) if self.last_run else 'never'
+        self.menu_item.title = f"{self.status.value} {self.owner}/{self.repo} - {last_run_formatted}"
 
     def get_new_runs(self, session) -> Sequence[Box]:
         headers = {"If-None-Match": self.etag} if self.etag else {}
@@ -169,7 +171,7 @@ class Repo:
         remaining = int(resp.headers["X-RateLimit-Remaining"])
         limit = int(resp.headers["X-RateLimit-Limit"])
         reset = arrow.get(int(resp.headers["X-RateLimit-Reset"])).to(LOCALTZ)
-        (logger.warning if remaining <= (limit / 4) else logger.debug)("rate limit %s remaining of %s, refreshes at %s", remaining, limit, reset.format(self.dateformat))
+        (logger.warning if remaining <= (limit / 4) else logger.debug)("rate limit %s remaining of %s, refreshes at %s", remaining, limit, reset)
 
 
 class RepoRunException(Exception):
