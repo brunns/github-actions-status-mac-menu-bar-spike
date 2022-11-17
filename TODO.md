@@ -11,4 +11,20 @@ I probably won't do any of these here - this is just a spike after all - but a r
 * Deal with multiple workflows per repo.
 * Pause/restart app.
 * Trigger workflow runs.
-* What's up with the threads hanging?
+* ~~What's up with the threads hanging?~~ (Might be fixed?)
+* Make the logs available when running as an app
+* Portable app creation
+
+## To-be domain model
+
+```mermaid
+erDiagram
+    ORG ||--o{ REPO : has
+    REPO ||--|{ BRANCH : has
+    REPO ||--|{ ACTOR : has
+    REPO ||--o{ WORKFLOW : has
+    WORKFLOW ||--o{ WORKFLOW-RUN : has
+    ACTOR ||--o{ WORKFLOW-RUN : has
+    BRANCH ||--o{ WORKFLOW-RUN : has
+    WORKFLOW ||--|{ STATUS : has
+```

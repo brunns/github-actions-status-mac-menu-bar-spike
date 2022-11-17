@@ -133,9 +133,7 @@ class Repo:
         if self.status != previous_status:
             logger.info("Repo %s/%s status now %s", self.owner, self.repo, self.status)
 
-        last_run_formatted = (
-            humanize.naturaldelta(arrow.utcnow() - self.last_run) if self.last_run else "never"
-        )
+        last_run_formatted = humanize.naturaldelta(arrow.now() - self.last_run) if self.last_run else "never"
         self.menu_item.title = (
             f"{self.status.value} {self.owner}/{self.repo} - {last_run_formatted}"
         )
@@ -181,7 +179,7 @@ class Repo:
         limit = int(resp.headers["X-RateLimit-Limit"])
         reset = arrow.get(int(resp.headers["X-RateLimit-Reset"])).to(LOCALTZ)
         (logger.warning if remaining <= (limit / 4) else logger.debug)(
-            "rate limit %s remaining of %s, refreshes at %s", remaining, limit, reset
+            "rate limit %s remaining of %s, refreshes at %s", remaining, limit, arrow.get(reset).to(LOCALTZ)
         )
 
 
