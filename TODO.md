@@ -19,12 +19,16 @@ I probably won't do any of these here - this is just a spike after all - but a r
 
 ```mermaid
 erDiagram
-    ORG ||--o{ REPO : has
+    ORG |o--o{ REPO : has
     REPO ||--|{ BRANCH : has
-    REPO ||--|{ ACTOR : has
+    REPO ||--o{ ACTOR : has
     REPO ||--o{ WORKFLOW : has
     WORKFLOW ||--o{ WORKFLOW-RUN : has
     ACTOR ||--o{ WORKFLOW-RUN : has
     BRANCH ||--o{ WORKFLOW-RUN : has
-    WORKFLOW ||--|{ STATUS : has
+    STATUS ||--o{ WORKFLOW-RUN : has
+    
+    APP ||--|| MENU : has
+    MENU ||--|{ MENU-ITEM : has
+    MENU-ITEM ||--|| REPO : has
 ```
