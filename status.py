@@ -5,42 +5,47 @@ import logging
 import sys
 import warnings
 import webbrowser
-
-import arrow
-import humanize
-import requests
-import rumps
-
 from dataclasses import dataclass
 from functools import cached_property
 from itertools import dropwhile
 from pathlib import Path
 from typing import MutableSequence, Optional, Sequence
 
+import arrow
+import humanize
+import requests
+import rumps
 from box import Box
-from contexttimer import timer, Timer
+from contexttimer import Timer, timer
 from furl import furl
 from ordered_enum import OrderedEnum
 from requests import HTTPError
 from requests.adapters import HTTPAdapter
 
 TRACE = 5
-logging.addLevelName(TRACE, 'TRACE')
+logging.addLevelName(TRACE, "TRACE")
 
 logger = logging.getLogger(__name__)
 
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 LOCALTZ = arrow.now().tzinfo
-AS_APP = getattr(sys, "frozen", None) == 'macosx_app'
+AS_APP = getattr(sys, "frozen", None) == "macosx_app"
 DEFAULT_CONFIG = json.dumps(
-    {"repos": [{"owner": "brunns", "repo": "mbtest"}, {"owner": "hamcrest", "repo": "PyHamcrest"}],
-     "interval": 60,
-     "verbosity": 2}, indent=4)
+    {
+        "repos": [
+            {"owner": "brunns", "repo": "mbtest"},
+            {"owner": "hamcrest", "repo": "PyHamcrest"},
+        ],
+        "interval": 60,
+        "verbosity": 2,
+    },
+    indent=4,
+)
 
 
 def main():
     if AS_APP:
-        config = get_config_from_config_file('.github_actions_status_config.json', DEFAULT_CONFIG)
+        config = get_config_from_config_file(".github_actions_status_config.json", DEFAULT_CONFIG)
         interval = config["interval"]
     else:  # CLI
         args = parse_args()
@@ -126,18 +131,22 @@ class Repo:
             self.etag = None
 
         if self.status != previous_status:
-            logger.info("Repo %s/%s status now %s",  self.owner, self.repo, self.status)
+            logger.info("Repo %s/%s status now %s", self.owner, self.repo, self.status)
 
-        last_run_formatted = humanize.naturaldelta(arrow.utcnow() - self.last_run) if self.last_run else 'never'
-        self.menu_item.title = f"{self.status.value} {self.owner}/{self.repo} - {last_run_formatted}"
+        last_run_formatted = (
+            humanize.naturaldelta(arrow.utcnow() - self.last_run) if self.last_run else "never"
+        )
+        self.menu_item.title = (
+            f"{self.status.value} {self.owner}/{self.repo} - {last_run_formatted}"
+        )
 
     def get_new_runs(self, session) -> Sequence[Box]:
         headers = {"If-None-Match": self.etag} if self.etag else {}
 
-        logging.log(TRACE, 'getting %s', self.github_api_list_workflow_runs_url)
+        logging.log(TRACE, "getting %s", self.github_api_list_workflow_runs_url)
         with Timer() as t:
             resp = session.get(self.github_api_list_workflow_runs_url, headers=headers, timeout=5)
-        logging.log(TRACE, 'got %s in %s', self.github_api_list_workflow_runs_url, t.elapsed)
+        logging.log(TRACE, "got %s in %s", self.github_api_list_workflow_runs_url, t.elapsed)
 
         resp.raise_for_status()
         self._log_rate_limit_stats(resp)
@@ -149,7 +158,7 @@ class Repo:
         else:
             logger.debug(f"updates to %s detected", self)
             resp_json = resp.json()
-            if not resp_json['total_count']:
+            if not resp_json["total_count"]:
                 raise RepoRunException("No repo runs detected.")
             all = [Box(r) for r in resp_json["workflow_runs"]]
             started = dropwhile(lambda r: r.status == "queued", all)
@@ -171,7 +180,9 @@ class Repo:
         remaining = int(resp.headers["X-RateLimit-Remaining"])
         limit = int(resp.headers["X-RateLimit-Limit"])
         reset = arrow.get(int(resp.headers["X-RateLimit-Reset"])).to(LOCALTZ)
-        (logger.warning if remaining <= (limit / 4) else logger.debug)("rate limit %s remaining of %s, refreshes at %s", remaining, limit, reset)
+        (logger.warning if remaining <= (limit / 4) else logger.debug)(
+            "rate limit %s remaining of %s, refreshes at %s", remaining, limit, reset
+        )
 
 
 class RepoRunException(Exception):
@@ -195,7 +206,10 @@ class GithubActionsStatusChecker:
 
         status = max(repo.status for repo in self.app.repos)
         self.app.app.title = status.value
-        if status not in (Status.OK, Status.RUNNING_FROM_OK) and previous_status in (Status.OK, Status.RUNNING_FROM_OK):
+        if status not in (Status.OK, Status.RUNNING_FROM_OK) and previous_status in (
+                Status.OK,
+                Status.RUNNING_FROM_OK,
+        ):
             rumps.notification(
                 title="Oooops...", subtitle="It's gone wrong again.", message="Now go and fix it."
             )
@@ -211,9 +225,9 @@ def take_until(predicate, iterable):
 def get_config_from_config_file(filename, default):
     config_path = Path.home() / filename
     if not config_path.is_file():
-        with config_path.open('w') as f:
+        with config_path.open("w") as f:
             f.write(default)
-    with config_path.open('r') as f:
+    with config_path.open("r") as f:
         config = json.load(f)
     init_logging(config["verbosity"], silence_packages=["urllib3"])
     return config
@@ -232,7 +246,7 @@ def create_parser():
     parser.add_argument(
         "-c",
         "--config",
-        type=FileTypeWithWrittenDefault('r', default=DEFAULT_CONFIG),
+        type=FileTypeWithWrittenDefault("r", default=DEFAULT_CONFIG),
         default="config.json",
         help="config file. Default: %(default)s",
     )
@@ -250,7 +264,7 @@ def create_parser():
         action="count",
         default=0,
         help="specify up to four times to increase verbosity, "
-        "i.e. -v to see warnings, -vv for information messages, -vvv for debug messages, or -vvvv for trace messages.",
+             "i.e. -v to see warnings, -vv for information messages, -vvv for debug messages, or -vvvv for trace messages.",
     )
     parser.add_argument("-V", "--version", action="version", version=VERSION)
 
@@ -260,15 +274,17 @@ def create_parser():
 class FileTypeWithWrittenDefault(argparse.FileType):
     as_ = """As argparse.FileType, but if read mode file doesn't exist, create it using default value."""
 
-    def __init__(self, mode='r', bufsize=-1, encoding=None, errors=None, default=None):
-        super(FileTypeWithWrittenDefault, self).__init__(mode=mode, bufsize=bufsize, encoding=encoding, errors=errors)
+    def __init__(self, mode="r", bufsize=-1, encoding=None, errors=None, default=None):
+        super(FileTypeWithWrittenDefault, self).__init__(
+            mode=mode, bufsize=bufsize, encoding=encoding, errors=errors
+        )
         self._default = default
 
     def __call__(self, string):
         path = Path(string)
-        if string != '-' and self._mode == 'r' and not path.is_file():
-            with path.open('w') as f: 
-                f.write(self._default or '')
+        if string != "-" and self._mode == "r" and not path.is_file():
+            with path.open("w") as f:
+                f.write(self._default or "")
         return super(FileTypeWithWrittenDefault, self).__call__(string)
 
 
