@@ -17,7 +17,13 @@ pip install -r requirements.txt --upgrade
 python3 status.py -vvv
 ```
 
-The list of repos to check is in `config.json`, along with the check interval and the date format to show.
+The list of repos to check is in `config.json`, along with the check interval (in seconds) and the date format to show.
+
+A [Github access token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token) 
+can optionally be specified, either as an environment variable, `GITHUB_OAUTH_TOKEN`, or via `config.json`. The app will 
+still work without this token, though private repositories will not be viewable, and the [API rate limit](https://docs.github.com/en/rest/overview/resources-in-the-rest-api#rate-limiting) 
+will be quite low (and shared between all users on one IP address), meaning only a few repositories can be monitored, 
+and the check interval should not be set too low.
 
 ## App
 
@@ -32,6 +38,7 @@ pip install -r requirements.txt --upgrade
 python3 setup.py py2app  # .app will be found in the dist/ folder
 ```
 
-If running as an app, config will be found in `~/.github_actions_status_config.json` which will be created on the first run.
+If running as an app, config will be found in `~/.github_actions_status_config.json` (which will be created on the first 
+run). Edit this file to specify repositories to monitor, and to specify a Github personal token if desired.
 
 Thanks to [Freja Brunning](https://twitter.com/freja_brunning) for the icon.

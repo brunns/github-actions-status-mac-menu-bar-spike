@@ -22,6 +22,7 @@ OPTIONS = {
 
 setup(
     name="Github Actions Status",
+    version="0.1.0",
     app=APP,
     data_files=DATA_FILES,
     options={'py2app': OPTIONS},

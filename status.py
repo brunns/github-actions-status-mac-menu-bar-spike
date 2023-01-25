@@ -2,6 +2,7 @@
 import argparse
 import json
 import logging
+import os
 import sys
 import warnings
 import webbrowser
@@ -36,6 +37,7 @@ DEFAULT_CONFIG = json.dumps(
             {"owner": "brunns", "repo": "mbtest"},
             {"owner": "hamcrest", "repo": "PyHamcrest"},
         ],
+        "oauth-token": "",
         "interval": 60,
         "verbosity": 2,
     },
@@ -53,6 +55,8 @@ def main():
         config = json.load(args.config)
         interval = args.interval or config["interval"]
 
+    oauth_token = os.environ.get("GITHUB_OAUTH_TOKEN", config.get("oauth-token", None))
+
     logger.debug("config: %s", config)
 
     app = StatusApp()
@@ -61,7 +65,7 @@ def main():
         repo = Repo.build(**repo)
         app.add(repo)
 
-    checker = GithubActionsStatusChecker(app)
+    checker = GithubActionsStatusChecker(app, oauth_token)
     timer = rumps.Timer(checker.check_all, interval)
     timer.start()
 
@@ -107,10 +111,10 @@ class Repo:
         repo.menu_item.set_callback(repo.on_click)
         return repo
 
-    def check(self, session):
+    def check(self, session, oauth_token):
         previous_status = self.status
         try:
-            new_runs = self.get_new_runs(session)
+            new_runs = self.get_new_runs(session, oauth_token)
             if new_runs:
                 *in_progress, completed = new_runs
 
@@ -135,11 +139,11 @@ class Repo:
 
         last_run_formatted = humanize.naturaldelta(arrow.now() - self.last_run) if self.last_run else "never"
         self.menu_item.title = (
-            f"{self.status.value} {self.owner}/{self.repo} - {last_run_formatted}"
+            f"{self.status.value} {self.owner}/{self.repo} - {last_run_formatted} ago"
         )
 
-    def get_new_runs(self, session) -> Sequence[Box]:
-        headers = {"If-None-Match": self.etag} if self.etag else {}
+    def get_new_runs(self, session, oauth_token) -> Sequence[Box]:
+        headers = {k: v for k, v in [("Authorization", f"Token {oauth_token}" if oauth_token else ""), ("If-None-Match", self.etag)] if v}
 
         logging.log(TRACE, "getting %s", self.github_api_list_workflow_runs_url)
         with Timer() as t:
@@ -188,8 +192,9 @@ class RepoRunException(Exception):
 
 
 class GithubActionsStatusChecker:
-    def __init__(self, app: StatusApp) -> None:
+    def __init__(self, app: StatusApp, oauth_token: Optional[str]) -> None:
         self.app = app
+        self.oauth_token = oauth_token
 
     @timer(logger=logger, level=TRACE)
     def check_all(self, sender):
@@ -200,7 +205,7 @@ class GithubActionsStatusChecker:
             session.mount("https://", adapter)
 
             for repo in self.app.repos:
-                repo.check(session)
+                repo.check(session, self.oauth_token)
 
         status = max(repo.status for repo in self.app.repos)
         self.app.app.title = status.value
