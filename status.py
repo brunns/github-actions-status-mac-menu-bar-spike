@@ -143,7 +143,7 @@ class Repo:
         )
 
     def get_new_runs(self, session, oauth_token) -> Sequence[Box]:
-        headers = {k: v for k, v in [("Authorization", f"Token {oauth_token}" if oauth_token else ""), ("If-None-Match", self.etag)] if v}
+        headers = {k: v for k, v in [("Authorization", f"Token {oauth_token}" if oauth_token else None), ("If-None-Match", self.etag)] if v}
 
         logging.log(TRACE, "getting %s", self.github_api_list_workflow_runs_url)
         with Timer() as t:
@@ -155,10 +155,10 @@ class Repo:
         self.etag = resp.headers["ETag"]
 
         if resp.status_code == 304:
-            logger.debug(f"no updates to %s detected", self)
+            logger.debug("no updates to %s detected", self)
             return []
         else:
-            logger.debug(f"updates to %s detected", self)
+            logger.debug("updates to %s detected", self)
             resp_json = resp.json()
             if not resp_json["total_count"]:
                 raise RepoRunException("No repo runs detected.")
@@ -175,6 +175,7 @@ class Repo:
         return url
 
     def on_click(self, sender):
+        logger.debug("clicked %s - opening %s", self, self.last_run_url)
         if self.last_run_url:
             webbrowser.open(self.last_run_url.url)
 
@@ -209,7 +210,11 @@ class GithubActionsStatusChecker:
 
         status = max(repo.status for repo in self.app.repos)
         self.app.app.title = status.value
-        if status not in (Status.OK, Status.RUNNING_FROM_OK) and previous_status in (
+        if status is Status.DISCONNECTED:
+            rumps.notification(
+                title="Oh no", subtitle="Network error.", message="I can't talk to Gityhub for some reason."
+            )
+        elif status not in (Status.OK, Status.RUNNING_FROM_OK) and previous_status in (
                 Status.OK,
                 Status.RUNNING_FROM_OK,
         ):
