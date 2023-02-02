@@ -11,6 +11,7 @@ DEPENDENCIES = [
     'arrow',
     'contexttimer',
     'humanize',
+    'python-json-logger',
 ]
 OPTIONS = {
     'argv_emulation': True,

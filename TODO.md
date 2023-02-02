@@ -15,7 +15,6 @@ I probably won't do any of these here - this is just a spike after all - but a r
 * Trigger workflow runs.
 * ~~What's up with the threads hanging?~~ (Might be fixed?)
 * requests -> [httpx](https://www.python-httpx.org/)
-* logging -> [structlog](https://github.com/hynek/structlog)
 
 ## To-be domain model
 

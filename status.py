@@ -20,6 +20,7 @@ from box import Box
 from contexttimer import Timer, timer
 from furl import furl
 from ordered_enum import OrderedEnum
+from pythonjsonlogger import jsonlogger
 from requests import HTTPError
 from requests.adapters import HTTPAdapter
 
@@ -51,13 +52,13 @@ def main():
         interval = config["interval"]
     else:  # CLI
         args = parse_args()
-        logger.debug("args: %s", args)
+        logger.debug("args", extra=vars(args))
         config = json.load(args.config)
         interval = args.interval or config["interval"]
 
     oauth_token = os.environ.get("GITHUB_OAUTH_TOKEN", config.get("oauth-token", None))
 
-    logger.debug("config: %s", config)
+    logger.debug("config", extra=config)
 
     app = StatusApp()
 
@@ -135,7 +136,7 @@ class Repo:
             self.etag = None
 
         if self.status != previous_status:
-            logger.info("Repo %s/%s status now %s", self.owner, self.repo, self.status)
+            logger.info("Repo status", extra={"owner": self.owner, "repo": self.repo, "status": self.status})
 
         last_run_formatted = humanize.naturaldelta(arrow.now() - self.last_run) if self.last_run else "never"
         self.menu_item.title = (
@@ -145,20 +146,20 @@ class Repo:
     def get_new_runs(self, session, oauth_token) -> Sequence[Box]:
         headers = {k: v for k, v in [("Authorization", f"Token {oauth_token}" if oauth_token else None), ("If-None-Match", self.etag)] if v}
 
-        logging.log(TRACE, "getting %s", self.github_api_list_workflow_runs_url)
+        logging.log(TRACE, "getting", extra={"url": self.github_api_list_workflow_runs_url})
         with Timer() as t:
             resp = session.get(self.github_api_list_workflow_runs_url, headers=headers, timeout=5)
-        logging.log(TRACE, "got %s in %s", self.github_api_list_workflow_runs_url, t.elapsed)
+        logging.log(TRACE, "got", extra={"url": self.github_api_list_workflow_runs_url, "elapsed": t.elapsed})
 
         resp.raise_for_status()
         self._log_rate_limit_stats(resp)
         self.etag = resp.headers["ETag"]
 
         if resp.status_code == 304:
-            logger.debug("no updates to %s detected", self)
+            logger.debug("no updates detected", extra={"repo": self})
             return []
         else:
-            logger.debug("updates to %s detected", self)
+            logger.debug("updates detected", extra={"repo": self})
             resp_json = resp.json()
             if not resp_json["total_count"]:
                 raise RepoRunException("No repo runs detected.")
@@ -175,7 +176,7 @@ class Repo:
         return url
 
     def on_click(self, sender):
-        logger.debug("clicked %s - opening %s", self, self.last_run_url)
+        logger.debug("clicked", extra={"repo": self, "opening": self.last_run_url})
         if self.last_run_url:
             webbrowser.open(self.last_run_url.url)
 
@@ -184,7 +185,7 @@ class Repo:
         limit = int(resp.headers["X-RateLimit-Limit"])
         reset = arrow.get(int(resp.headers["X-RateLimit-Reset"])).to(LOCALTZ)
         (logger.warning if remaining <= (limit / 4) else logger.debug)(
-            "rate limit %s remaining of %s, refreshes at %s", remaining, limit, arrow.get(reset).to(LOCALTZ)
+            "rate limit", extra={"limit": limit, "remaining": remaining, "reset": arrow.get(reset).to(LOCALTZ)}
         )
 
 
@@ -304,7 +305,9 @@ def init_logging(verbosity, stream=sys.stdout, silence_packages=()):
         warnings.filterwarnings("ignore")
         msg_format = "%(asctime)s %(levelname)-8s %(name)s %(module)s.py:%(funcName)s():%(lineno)d %(message)s"
         rumps.debug_mode(True)
-    logging.basicConfig(level=level, format=msg_format, stream=stream)
+    handler = logging.StreamHandler(stream=stream)
+    handler.setFormatter(jsonlogger.JsonFormatter(msg_format))
+    logging.basicConfig(level=level, format=msg_format, handlers=[handler])
 
     for package in silence_packages:
         logging.getLogger(package).setLevel(max([level, logging.WARNING]))
