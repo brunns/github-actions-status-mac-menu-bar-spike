@@ -213,14 +213,19 @@ class GithubActionsStatusChecker:
         self.app.app.title = status.value
         if status is Status.DISCONNECTED:
             rumps.notification(
-                title="Oh no", subtitle="Network error.", message="I can't talk to Gityhub for some reason."
+                title="Network error",
+                subtitle="Github Network error",
+                message="Unexpected error calling Github API.",
+                sound=False,
             )
         elif status not in (Status.OK, Status.RUNNING_FROM_OK) and previous_status in (
                 Status.OK,
                 Status.RUNNING_FROM_OK,
         ):
             rumps.notification(
-                title="Oooops...", subtitle="It's gone wrong again.", message="Now go and fix it."
+                title="Failure",
+                subtitle="Workflow failure",
+                message="Github Actions workflow run failed.",
             )
 
 
