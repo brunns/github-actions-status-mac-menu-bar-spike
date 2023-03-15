@@ -74,7 +74,6 @@ def main():
 
 
 class Status(OrderedEnum):
-
     OK = "🟢"
     RUNNING_FROM_OK = "♻️"
     RUNNING_FROM_FAILED = "🟠"
@@ -133,34 +132,53 @@ class Repo:
                 else:
                     self.status = Status.OK if completed.conclusion == "success" else Status.FAILED
 
-                if self.workflow: self.workflow_name = completed.name
+                if self.workflow:
+                    self.workflow_name = completed.name
         except (HTTPError, RepoRunException) as e:
             logger.exception(e)
             self.status = Status.DISCONNECTED
             self.etag = None
 
         if self.status != previous_status:
-            logger.info("Repo status", extra={"owner": self.owner, "repo": self.repo, "workflow": self.workflow,
-                                              "status": self.status})
+            logger.info(
+                "Repo status",
+                extra={
+                    "owner": self.owner,
+                    "repo": self.repo,
+                    "workflow": self.workflow,
+                    "status": self.status,
+                },
+            )
 
-        last_run_formatted = humanize.naturaldelta(arrow.now() - self.last_run) if self.last_run else "never"
+        last_run_formatted = (
+            humanize.naturaldelta(arrow.now() - self.last_run) if self.last_run else "never"
+        )
         self.menu_item.title = (
-            f"{self.status.value} {self.owner}/{self.repo}/{self.workflow_name} - {last_run_formatted} ago" if self.workflow else
-            f"{self.status.value} {self.owner}/{self.repo} - {last_run_formatted} ago"
+            f"{self.status.value} {self.owner}/{self.repo}/{self.workflow_name} - {last_run_formatted} ago"
+            if self.workflow
+            else f"{self.status.value} {self.owner}/{self.repo} - {last_run_formatted} ago"
         )
 
     def get_new_runs(self, session, oauth_token) -> Sequence[Box]:
-        headers = {k: v for k, v in
-                   [("Authorization", f"Token {oauth_token}" if oauth_token else None),
-                    ("If-None-Match", self.etag),
-                    ("Accept", "application/vnd.github+json"),
-                    ("X-GitHub-Api-Version", "2022-11-28"),
-                    ] if v}
+        headers = {
+            k: v
+            for k, v in [
+                ("Authorization", f"Token {oauth_token}" if oauth_token else None),
+                ("If-None-Match", self.etag),
+                ("Accept", "application/vnd.github+json"),
+                ("X-GitHub-Api-Version", "2022-11-28"),
+            ]
+            if v
+        }
 
         logging.log(TRACE, "getting", extra={"url": self.github_api_list_workflow_runs_url})
         with Timer() as t:
             resp = session.get(self.github_api_list_workflow_runs_url, headers=headers, timeout=5)
-        logging.log(TRACE, "got", extra={"url": self.github_api_list_workflow_runs_url, "elapsed": t.elapsed})
+        logging.log(
+            TRACE,
+            "got",
+            extra={"url": self.github_api_list_workflow_runs_url, "elapsed": t.elapsed},
+        )
 
         resp.raise_for_status()
         self._log_rate_limit_stats(resp)
@@ -199,7 +217,8 @@ class Repo:
         limit = int(resp.headers["X-RateLimit-Limit"])
         reset = arrow.get(int(resp.headers["X-RateLimit-Reset"])).to(LOCALTZ)
         (logger.warning if remaining <= (limit / 4) else logger.debug)(
-            "rate limit", extra={"limit": limit, "remaining": remaining, "reset": arrow.get(reset).to(LOCALTZ)}
+            "rate limit",
+            extra={"limit": limit, "remaining": remaining, "reset": arrow.get(reset).to(LOCALTZ)},
         )
 
 
@@ -233,8 +252,8 @@ class GithubActionsStatusChecker:
                 sound=False,
             )
         elif status not in (Status.OK, Status.RUNNING_FROM_OK) and previous_status in (
-                Status.OK,
-                Status.RUNNING_FROM_OK,
+            Status.OK,
+            Status.RUNNING_FROM_OK,
         ):
             rumps.notification(
                 title="Failure",
@@ -292,7 +311,7 @@ def create_parser():
         action="count",
         default=0,
         help="specify up to four times to increase verbosity, "
-             "i.e. -v to see warnings, -vv for information messages, -vvv for debug messages, or -vvvv for trace messages.",
+        "i.e. -v to see warnings, -vv for information messages, -vvv for debug messages, or -vvvv for trace messages.",
     )
     parser.add_argument("-V", "--version", action="version", version=VERSION)
 
