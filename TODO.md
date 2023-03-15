@@ -34,4 +34,5 @@ erDiagram
     APP ||--|| MENU : has
     MENU ||--|{ MENU-ITEM : has
     MENU-ITEM ||--|| REPO : has
+    MENU-ITEM ||--|| WORKFLOW : has
 ```
