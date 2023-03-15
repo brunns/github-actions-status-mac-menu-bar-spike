@@ -29,14 +29,14 @@ logging.addLevelName(TRACE, "TRACE")
 
 logger = logging.getLogger(__name__)
 
-VERSION = "0.4.0"
+VERSION = "0.5.0"
 LOCALTZ = arrow.now().tzinfo
 AS_APP = getattr(sys, "frozen", None) == "macosx_app"
 DEFAULT_CONFIG = json.dumps(
     {
         "repos": [
             {"owner": "brunns", "repo": "mbtest"},
-            {"owner": "hamcrest", "repo": "PyHamcrest"},
+            {"owner": "hamcrest", "repo": "PyHamcrest", "workflow": "main.yml"},
         ],
         "oauth-token": "",
         "interval": 60,
@@ -99,16 +99,18 @@ class StatusApp:
 class Repo:
     owner: str
     repo: str
+    workflow: Optional[str]
     menu_item: rumps.MenuItem
+    workflow_name: Optional[str] = None
     status: Status = Status.DISCONNECTED
     last_run_url: Optional[furl] = None
     etag: Optional[str] = None
     last_run: Optional[arrow.arrow.Arrow] = None
 
     @classmethod
-    def build(cls, owner, repo) -> "Repo":
-        menu_item = rumps.MenuItem(f"{owner}/{repo}")
-        repo = cls(owner, repo, menu_item)
+    def build(cls, owner, repo, workflow=None) -> "Repo":
+        menu_item = rumps.MenuItem(f"{owner}/{repo}/{workflow}" if workflow else f"{owner}/{repo}")
+        repo = cls(owner, repo, workflow, menu_item)
         repo.menu_item.set_callback(repo.on_click)
         return repo
 
@@ -130,21 +132,30 @@ class Repo:
                     )
                 else:
                     self.status = Status.OK if completed.conclusion == "success" else Status.FAILED
+
+                if self.workflow: self.workflow_name = completed.name
         except (HTTPError, RepoRunException) as e:
             logger.exception(e)
             self.status = Status.DISCONNECTED
             self.etag = None
 
         if self.status != previous_status:
-            logger.info("Repo status", extra={"owner": self.owner, "repo": self.repo, "status": self.status})
+            logger.info("Repo status", extra={"owner": self.owner, "repo": self.repo, "workflow": self.workflow,
+                                              "status": self.status})
 
         last_run_formatted = humanize.naturaldelta(arrow.now() - self.last_run) if self.last_run else "never"
         self.menu_item.title = (
+            f"{self.status.value} {self.owner}/{self.repo}/{self.workflow_name} - {last_run_formatted} ago" if self.workflow else
             f"{self.status.value} {self.owner}/{self.repo} - {last_run_formatted} ago"
         )
 
     def get_new_runs(self, session, oauth_token) -> Sequence[Box]:
-        headers = {k: v for k, v in [("Authorization", f"Token {oauth_token}" if oauth_token else None), ("If-None-Match", self.etag)] if v}
+        headers = {k: v for k, v in
+                   [("Authorization", f"Token {oauth_token}" if oauth_token else None),
+                    ("If-None-Match", self.etag),
+                    ("Accept", "application/vnd.github+json"),
+                    ("X-GitHub-Api-Version", "2022-11-28"),
+                    ] if v}
 
         logging.log(TRACE, "getting", extra={"url": self.github_api_list_workflow_runs_url})
         with Timer() as t:
@@ -168,11 +179,14 @@ class Repo:
             return list(take_until(lambda r: r.status == "completed", started))
 
     @cached_property
-    def github_api_list_workflow_runs_url(self) -> furl:
-        # See https://docs.github.com/en/rest/reference/actions#list-workflow-runs-for-a-repository for docs
-        url = furl("https://api.github.com/repos/") / self.owner / self.repo / "actions/runs"
-        url.args["accept"] = "application/vnd.github.v3+json"
-        url.args["per_page"] = 10
+    def github_api_list_workflow_runs_url(self, per_page=10) -> furl:
+        # See https://docs.github.com/en/rest/actions/workflow-runs?apiVersion=2022-11-28#about-workflow-runs-in-github-actions for docs
+        url = furl("https://api.github.com/repos/") / self.owner / self.repo / "actions"
+        if self.workflow:
+            url = url / "workflows" / self.workflow
+        url = url / "runs"
+
+        url.args["per_page"] = per_page
         return url
 
     def on_click(self, sender):

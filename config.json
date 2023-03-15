@@ -18,11 +18,23 @@
     },
     {
       "owner": "brunns",
-      "repo": "PyHamcrest"
+      "repo": "PyHamcrest",
+      "workflow": "main.yml"
+    },
+    {
+      "owner": "brunns",
+      "repo": "PyHamcrest",
+      "workflow": "release.yml"
     },
     {
       "owner": "hamcrest",
-      "repo": "PyHamcrest"
+      "repo": "PyHamcrest",
+      "workflow": "main.yml"
+    },
+    {
+      "owner": "hamcrest",
+      "repo": "PyHamcrest",
+      "workflow": "release.yml"
     },
     {
       "owner": "brunns",
