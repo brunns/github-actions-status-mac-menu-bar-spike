@@ -6,7 +6,7 @@ import os
 import sys
 import warnings
 import webbrowser
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cached_property
 from itertools import dropwhile
 from logging.handlers import TimedRotatingFileHandler
@@ -101,7 +101,7 @@ class Repo:
     owner: str
     repo: str
     workflow: Optional[str]
-    menu_item: rumps.MenuItem
+    menu_item: rumps.MenuItem = field(repr=False)
     workflow_name: Optional[str] = None
     status: Status = Status.DISCONNECTED
     last_run_url: Optional[furl] = None
