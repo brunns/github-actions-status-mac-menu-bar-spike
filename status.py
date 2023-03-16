@@ -9,6 +9,7 @@ import webbrowser
 from dataclasses import dataclass
 from functools import cached_property
 from itertools import dropwhile
+from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from typing import MutableSequence, Optional, Sequence
 
@@ -41,6 +42,7 @@ DEFAULT_CONFIG = json.dumps(
         "oauth-token": "",
         "interval": 60,
         "verbosity": 2,
+        "logfile": "",
     },
     indent=4,
 )
@@ -276,7 +278,11 @@ def get_config_from_config_file(filename, default):
             f.write(default)
     with config_path.open("r") as f:
         config = json.load(f)
-    init_logging(config["verbosity"], silence_packages=["urllib3"])
+    if config.get("logfile", None):
+        handler = TimedRotatingFileHandler(config["logfile"], backupCount=3)
+    else:
+        handler = logging.StreamHandler(stream=sys.stdout)
+    init_logging(config["verbosity"], silence_packages=["urllib3"], handler=handler)
     return config
 
 
@@ -335,7 +341,7 @@ class FileTypeWithWrittenDefault(argparse.FileType):
         return super(FileTypeWithWrittenDefault, self).__call__(string)
 
 
-def init_logging(verbosity, stream=sys.stdout, silence_packages=()):
+def init_logging(verbosity, handler=logging.StreamHandler(stream=sys.stdout), silence_packages=()):
     LOG_LEVELS = [logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG, TRACE]
     level = LOG_LEVELS[min(verbosity, len(LOG_LEVELS) - 1)]
     msg_format = "%(message)s"
@@ -343,7 +349,6 @@ def init_logging(verbosity, stream=sys.stdout, silence_packages=()):
         warnings.filterwarnings("ignore")
         msg_format = "%(asctime)s %(levelname)-8s %(name)s %(module)s.py:%(funcName)s():%(lineno)d %(message)s"
         rumps.debug_mode(True)
-    handler = logging.StreamHandler(stream=stream)
     handler.setFormatter(jsonlogger.JsonFormatter(msg_format))
     logging.basicConfig(level=level, format=msg_format, handlers=[handler])
 
