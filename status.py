@@ -42,7 +42,7 @@ DEFAULT_CONFIG = json.dumps(
         "oauth-token": "",
         "interval": 60,
         "verbosity": 2,
-        "logfile": "",
+        "logfile": "/tmp/github_actions_status.log",
     },
     indent=4,
 )
