@@ -62,7 +62,7 @@ def main():
 
     logger.debug("config", extra=config)
 
-    app = StatusApp()
+    app = StatusApp(debug=logger.root.level <= logging.DEBUG)
 
     for repo in config["repos"]:
         repo = Repo.build(**repo)
@@ -72,7 +72,7 @@ def main():
     timer = rumps.Timer(checker.check_all, interval)
     timer.start()
 
-    app.run(debug=logger.root.level <= logging.DEBUG)
+    app.run()
 
 
 class Status(OrderedEnum):
@@ -84,12 +84,13 @@ class Status(OrderedEnum):
 
 
 class StatusApp:
-    def __init__(self):
-        self.app = rumps.App("Github Actions Status", Status.OK.value)
+    def __init__(self, debug=False):
+        self.app: rumps.App = rumps.App("Github Actions Status", Status.OK.value)
         self.repos: MutableSequence["Repo"] = []
+        self.debug: bool = debug
 
-    def run(self, debug=False):
-        self.app.run(debug=debug)
+    def run(self):
+        self.app.run(debug=self.debug)
 
     def add(self, repo: "Repo"):
         self.repos.append(repo)
@@ -235,7 +236,7 @@ class GithubActionsStatusChecker:
 
     @timer(logger=logger, level=TRACE)
     def check_all(self, sender):
-        previous_status = max(repo.status for repo in self.app.repos)
+        previous_overall_status = max(repo.status for repo in self.app.repos)
 
         adapter = HTTPAdapter(max_retries=3)
         with requests.Session() as session:
@@ -244,16 +245,19 @@ class GithubActionsStatusChecker:
             for repo in self.app.repos:
                 repo.check(session, self.oauth_token)
 
-        status = max(repo.status for repo in self.app.repos)
-        self.app.app.title = status.value
-        if status is Status.DISCONNECTED:
+        overall_status = max(repo.status for repo in self.app.repos)
+        self.app.app.title = overall_status.value
+        if overall_status is Status.DISCONNECTED:
             rumps.notification(
                 title="Network error",
                 subtitle="Github Network error",
                 message="Unexpected error calling Github API.",
                 sound=False,
             )
-        elif status not in (Status.OK, Status.RUNNING_FROM_OK) and previous_status in (
+        elif overall_status not in (
+            Status.OK,
+            Status.RUNNING_FROM_OK,
+        ) and previous_overall_status in (
             Status.OK,
             Status.RUNNING_FROM_OK,
         ):

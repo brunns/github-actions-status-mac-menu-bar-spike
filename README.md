@@ -13,8 +13,8 @@ To run from cli:
 ```shell
 # If you're using pyenv, you'll need to use the system python for this. If not, I expect this is the default.
 pyenv local system  
-python3 -m venv venv
-source venv/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt --upgrade
 python3 status.py -vvv
 ```
@@ -26,8 +26,8 @@ To build as a .app bundle:
 ```shell
 # If you're using pyenv, you'll need to use the system python for this. If not, I expect this is the default.
 pyenv local system  
-python3 -m venv venv
-source venv/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt --upgrade
 python3 setup.py py2app  # .app will be found in the dist/ folder
 ```
