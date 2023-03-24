@@ -87,7 +87,7 @@ class Status(OrderedEnum):
 
 class StatusApp:
     def __init__(self, auth_holder, debug=False):
-        self.app: rumps.App = rumps.App("Github Actions Status", Status.OK.value)
+        self.app: rumps.App = rumps.App("GitHub Actions Status", Status.OK.value)
         self.repos: MutableSequence["Repo"] = []
         self.auth_holder = auth_holder
         self.debug: bool = debug
@@ -198,21 +198,24 @@ class Repo:
             extra={"url": self.github_api_list_workflow_runs_url, "elapsed": t.elapsed},
         )
 
-        resp.raise_for_status()
-        self._log_rate_limit_stats(resp)
-        self.etag = resp.headers["ETag"]
-
-        if resp.status_code == 304:
-            logger.debug("no updates detected", extra={"repo": self})
-            return []
+        if resp.status_code == 401:
+            auth_holder.expired()
         else:
-            logger.debug("updates detected", extra={"repo": self})
-            resp_json = resp.json()
-            if not resp_json["total_count"]:
-                raise RepoRunException("No repo runs detected.")
-            all_runs = [Box(r) for r in resp_json["workflow_runs"]]
-            started = dropwhile(lambda r: r.status == "queued", all_runs)
-            return list(take_until(lambda r: r.status == "completed", started))
+            resp.raise_for_status()
+            self._log_rate_limit_stats(resp)
+            self.etag = resp.headers["ETag"]
+
+            if resp.status_code == 304:
+                logger.debug("no updates detected", extra={"repo": self})
+                return []
+            else:
+                logger.debug("updates detected", extra={"repo": self})
+                resp_json = resp.json()
+                if not resp_json["total_count"]:
+                    raise RepoRunException("No repo runs detected.")
+                all_runs = [Box(r) for r in resp_json["workflow_runs"]]
+                started = dropwhile(lambda r: r.status == "queued", all_runs)
+                return list(take_until(lambda r: r.status == "completed", started))
 
     @cached_property
     def github_api_list_workflow_runs_url(self, per_page=10) -> furl:
@@ -261,8 +264,8 @@ class GithubActionsStatusChecker:
         if overall_status is Status.DISCONNECTED:
             rumps.notification(
                 title="Network error",
-                subtitle="Github Network error",
-                message="Unexpected error calling Github API.",
+                subtitle="GitHub Network error",
+                message="Unexpected error calling GitHub API.",
                 sound=False,
             )
         elif overall_status not in (
@@ -275,7 +278,7 @@ class GithubActionsStatusChecker:
             rumps.notification(
                 title="Failure",
                 subtitle="Workflow failure",
-                message="Github Actions workflow run failed.",
+                message="GitHub Actions workflow run failed.",
             )
 
 
@@ -288,6 +291,7 @@ class AuthHolder:
     AUTHENTICATED = "✅ Authenticated"
     AUTHENTICATE = "❓ Authenticate"
     INVALID = "❌ Invalid"
+    EXPIRED = "❌ Expired"
     CANNOT_AUTHENTICATE = "❌ Cannot authenticate"
 
     def __init__(self, as_app):
@@ -312,7 +316,10 @@ class AuthHolder:
                     extra={"oauth_token_filepath": self.oauth_token_filepath},
                 )
         else:
-            logger.info("OAuth token file not found", extra={"oauth_token_filepath": self.oauth_token_filepath})
+            logger.info(
+                "OAuth token file not found",
+                extra={"oauth_token_filepath": self.oauth_token_filepath},
+            )
 
         if self.oauth_token:
             menu_item_text = self.AUTHENTICATED
@@ -351,6 +358,7 @@ class AuthHolder:
             self.AUTH_URL,
             headers={"Accept": "application/json"},
             data={"client_id": self.github_client_id, "scope": self.SCOPE},
+            timeout=5,
         )
         response.raise_for_status()
         response_json = response.json()
@@ -367,7 +375,7 @@ class AuthHolder:
     def _prompt_user_for_code(self, user_code, verification_uri):
         logger.warning("Authentication - prompting user.", extra=locals())
         copy = rumps.alert(
-            title="Github Actions Status - Authentication",
+            title="GitHub Actions Status - Authentication",
             message=f"Device activation - please enter code {user_code} in the browser window which will open.",
             ok="Copy code to clipboard",
             cancel="Cancel",
@@ -392,6 +400,7 @@ class AuthHolder:
                     "device_code": device_code,
                     "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
                 },
+                timeout=5,
             )
             response.raise_for_status()
             response_json = response.json()
@@ -407,6 +416,7 @@ class AuthHolder:
         response = requests.get(
             self.CHECK_URL,
             headers={"Accept": "application/json", "Authorization": f"Token {access_token}"},
+            timeout=5,
         )
         logger.info("Tested token", extra={"url": self.CHECK_URL, "response": response})
         return response.ok
@@ -417,8 +427,14 @@ class AuthHolder:
             logger.info("Wrote token to file", extra={"file": self.oauth_token_filepath})
 
     def expired(self):
-        # TODO
         logger.warning("token expired")
+        self.oauth_token = None
+        self.menu_item.title = self.EXPIRED
+        rumps.notification(
+            title="Authentication",
+            subtitle="Authentication Expired",
+            message="GitHub authentication expired - please re-authenticate.",
+        )
 
 
 def take_until(predicate, iterable):
