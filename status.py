@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import sys
+import time
 import warnings
 import webbrowser
 from dataclasses import dataclass, field
@@ -15,6 +16,7 @@ from typing import MutableSequence, Optional, Sequence
 
 import arrow
 import humanize
+import pyperclip
 import requests
 import rumps
 from box import Box
@@ -30,7 +32,7 @@ logging.addLevelName(TRACE, "TRACE")
 
 logger = logging.getLogger(__name__)
 
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 LOCALTZ = arrow.now().tzinfo
 AS_APP = getattr(sys, "frozen", None) == "macosx_app"
 DEFAULT_CONFIG = json.dumps(
@@ -39,7 +41,6 @@ DEFAULT_CONFIG = json.dumps(
             {"owner": "brunns", "repo": "mbtest"},
             {"owner": "hamcrest", "repo": "PyHamcrest", "workflow": "main.yml"},
         ],
-        "oauth-token": "",
         "interval": 60,
         "verbosity": 2,
         "logfile": "/tmp/github_actions_status.log",
@@ -50,7 +51,9 @@ DEFAULT_CONFIG = json.dumps(
 
 def main():
     if AS_APP:
-        config = get_config_from_config_file(".github_actions_status_config.json", DEFAULT_CONFIG)
+        config = get_config_from_config_file(
+            Path.home() / ".github_actions_status" / "config.json", DEFAULT_CONFIG
+        )
         interval = config["interval"]
     else:  # CLI
         args = parse_args()
@@ -58,17 +61,16 @@ def main():
         config = json.load(args.config)
         interval = args.interval or config["interval"]
 
-    oauth_token = os.environ.get("GITHUB_OAUTH_TOKEN", config.get("oauth-token", None))
-
     logger.debug("config", extra=config)
 
-    app = StatusApp(debug=logger.root.level <= logging.DEBUG)
+    auth_holder = AuthHolder(AS_APP)
+    app = StatusApp(auth_holder, debug=logger.root.level <= logging.DEBUG)
 
     for repo in config["repos"]:
         repo = Repo.build(**repo)
         app.add(repo)
 
-    checker = GithubActionsStatusChecker(app, oauth_token)
+    checker = GithubActionsStatusChecker(app, auth_holder)
     timer = rumps.Timer(checker.check_all, interval)
     timer.start()
 
@@ -84,17 +86,27 @@ class Status(OrderedEnum):
 
 
 class StatusApp:
-    def __init__(self, debug=False):
+    def __init__(self, auth_holder, debug=False):
         self.app: rumps.App = rumps.App("Github Actions Status", Status.OK.value)
         self.repos: MutableSequence["Repo"] = []
+        self.auth_holder = auth_holder
         self.debug: bool = debug
 
     def run(self):
+        self.app.menu.add(self.auth_holder.menu_item)
         self.app.run(debug=self.debug)
 
     def add(self, repo: "Repo"):
         self.repos.append(repo)
         self.app.menu.add(repo.menu_item)
+
+
+class RepoRunException(Exception):
+    pass
+
+
+class GitHubAuthenticationException(Exception):
+    pass
 
 
 @dataclass
@@ -116,10 +128,10 @@ class Repo:
         repo.menu_item.set_callback(repo.on_click)
         return repo
 
-    def check(self, session, oauth_token):
+    def check(self, session: requests.Session, auth_holder: "AuthHolder"):
         previous_status = self.status
         try:
-            new_runs = self.get_new_runs(session, oauth_token)
+            new_runs = self.get_new_runs(session, auth_holder)
             if new_runs:
                 *in_progress, completed = new_runs
 
@@ -162,11 +174,14 @@ class Repo:
             else f"{self.status.value} {self.owner}/{self.repo} - {last_run_formatted} ago"
         )
 
-    def get_new_runs(self, session, oauth_token) -> Sequence[Box]:
+    def get_new_runs(self, session: requests.Session, auth_holder: "AuthHolder") -> Sequence[Box]:
         headers = {
             k: v
             for k, v in [
-                ("Authorization", f"Token {oauth_token}" if oauth_token else None),
+                (
+                    "Authorization",
+                    f"Token {auth_holder.oauth_token}" if auth_holder.oauth_token else None,
+                ),
                 ("If-None-Match", self.etag),
                 ("Accept", "application/vnd.github+json"),
                 ("X-GitHub-Api-Version", "2022-11-28"),
@@ -195,8 +210,8 @@ class Repo:
             resp_json = resp.json()
             if not resp_json["total_count"]:
                 raise RepoRunException("No repo runs detected.")
-            all = [Box(r) for r in resp_json["workflow_runs"]]
-            started = dropwhile(lambda r: r.status == "queued", all)
+            all_runs = [Box(r) for r in resp_json["workflow_runs"]]
+            started = dropwhile(lambda r: r.status == "queued", all_runs)
             return list(take_until(lambda r: r.status == "completed", started))
 
     @cached_property
@@ -225,14 +240,10 @@ class Repo:
         )
 
 
-class RepoRunException(Exception):
-    pass
-
-
 class GithubActionsStatusChecker:
-    def __init__(self, app: StatusApp, oauth_token: Optional[str]) -> None:
+    def __init__(self, app: StatusApp, auth_holder: "AuthHolder") -> None:
         self.app = app
-        self.oauth_token = oauth_token
+        self.auth_holder = auth_holder
 
     @timer(logger=logger, level=TRACE)
     def check_all(self, sender):
@@ -243,7 +254,7 @@ class GithubActionsStatusChecker:
             session.mount("https://", adapter)
 
             for repo in self.app.repos:
-                repo.check(session, self.oauth_token)
+                repo.check(session, self.auth_holder)
 
         overall_status = max(repo.status for repo in self.app.repos)
         self.app.app.title = overall_status.value
@@ -268,6 +279,148 @@ class GithubActionsStatusChecker:
             )
 
 
+class AuthHolder:
+    AUTH_URL = furl("https://github.com/login/device/code")
+    POLL_URL = furl("https://github.com/login/oauth/access_token")
+    CHECK_URL = furl("https://api.github.com/user/issues")
+    SCOPE = "repo"
+
+    AUTHENTICATED = "✅ Authenticated"
+    AUTHENTICATE = "❓ Authenticate"
+    INVALID = "❌ Invalid"
+    CANNOT_AUTHENTICATE = "❌ Cannot authenticate"
+
+    def __init__(self, as_app):
+        try:
+            self.github_client_id = os.environ["GITHUB_OAUTH_CLIENT_ID"]
+        except KeyError:
+            logger.error("Env var GITHUB_OAUTH_CLIENT_ID not found.")
+            self.github_client_id = None
+        self.oauth_token = None
+
+        oauth_token_filename = ".oauth_token"
+        self.oauth_token_filepath = (
+            Path.home() / ".github_actions_status" / oauth_token_filename
+            if as_app
+            else Path(oauth_token_filename)
+        )
+        if self.oauth_token_filepath.is_file():
+            with self.oauth_token_filepath.open("r") as f:
+                self.oauth_token = f.read()
+                logger.info(
+                    "loaded OAuth token from file",
+                    extra={"oauth_token_filepath": self.oauth_token_filepath},
+                )
+        else:
+            logger.info("OAuth token file not found", extra={"oauth_token_filepath": self.oauth_token_filepath})
+
+        if self.oauth_token:
+            menu_item_text = self.AUTHENTICATED
+        elif not self.github_client_id:
+            menu_item_text = self.CANNOT_AUTHENTICATE
+        else:
+            menu_item_text = self.AUTHENTICATE
+        self.menu_item = rumps.MenuItem(menu_item_text)
+        if self.github_client_id:
+            self.menu_item.set_callback(self.on_click)
+
+    def on_click(self, sender):
+        """Authenticate against GitHub using OAuth device flow.
+        See https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#device-flow
+        """
+        logger.debug("clicked", extra={"AuthHolder": self})
+
+        (
+            device_code,
+            interval,
+            user_code,
+            verification_uri,
+        ) = self._request_device_and_user_verification_codes()
+        if self._prompt_user_for_code(user_code, verification_uri):
+            access_token = self._poll_until_completion(device_code, interval)
+            if self._test_token(access_token):
+                self.oauth_token = access_token
+                self.menu_item.title = self.AUTHENTICATED
+                self._update_oauth_token_file()
+            else:
+                logger.warning("Authentication - invalid token", extra=locals())
+                self.menu_item.title = self.INVALID
+
+    def _request_device_and_user_verification_codes(self):
+        response = requests.post(
+            self.AUTH_URL,
+            headers={"Accept": "application/json"},
+            data={"client_id": self.github_client_id, "scope": self.SCOPE},
+        )
+        response.raise_for_status()
+        response_json = response.json()
+        device_code, interval, user_code, verification_uri = (
+            response_json["device_code"],
+            response_json["interval"],
+            response_json["user_code"],
+            response_json["verification_uri"],
+        )
+
+        logger.debug("Verification codes.", extra=locals())
+        return device_code, interval, user_code, verification_uri
+
+    def _prompt_user_for_code(self, user_code, verification_uri):
+        logger.warning("Authentication - prompting user.", extra=locals())
+        copy = rumps.alert(
+            title="Github Actions Status - Authentication",
+            message=f"Device activation - please enter code {user_code} in the browser window which will open.",
+            ok="Copy code to clipboard",
+            cancel="Cancel",
+        )
+        if copy:
+            pyperclip.copy(user_code)
+            webbrowser.open(verification_uri)
+            return True
+
+    def _poll_until_completion(self, device_code, interval):
+        while True:
+            # Wait for a few seconds before polling again
+            time.sleep(interval)
+            logger.debug("Polling for user action.")
+
+            # Send a request to GitHub to check if the user has authorized the app
+            response = requests.post(
+                self.POLL_URL,
+                headers={"Accept": "application/json"},
+                data={
+                    "client_id": self.github_client_id,
+                    "device_code": device_code,
+                    "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                },
+            )
+            response.raise_for_status()
+            response_json = response.json()
+
+            if "access_token" in response_json:
+                logger.debug("Access token acquired")
+                return response_json["access_token"]
+            elif response_json.get("error", None) == "expired_token":
+                logger.warning("Authentication - user token expired.", extra=locals())
+                raise GitHubAuthenticationException("User token expired")
+
+    def _test_token(self, access_token):
+        response = requests.get(
+            self.CHECK_URL,
+            headers={"Accept": "application/json", "Authorization": f"Token {access_token}"},
+        )
+        logger.info("Tested token", extra={"url": self.CHECK_URL, "response": response})
+        return response.ok
+
+    def _update_oauth_token_file(self):
+        with self.oauth_token_filepath.open("w") as f:
+            f.write(self.oauth_token)
+            logger.info("Wrote token to file", extra={"file": self.oauth_token_filepath})
+
+    def expired(self):
+        # TODO
+        logger.warning("token expired")
+
+
 def take_until(predicate, iterable):
     for i in iterable:
         yield i
@@ -275,9 +428,9 @@ def take_until(predicate, iterable):
             break
 
 
-def get_config_from_config_file(filename, default):
-    config_path = Path.home() / filename
+def get_config_from_config_file(config_path, default):
     if not config_path.is_file():
+        config_path.parents[0].mkdir(exist_ok=True)
         with config_path.open("w") as f:
             f.write(default)
     with config_path.open("r") as f:

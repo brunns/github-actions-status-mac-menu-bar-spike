@@ -1,10 +1,26 @@
-# github-actions-status-mac-menu-bar-spike
+# GitHub Actions Status Mac Menu Bar Spike
 
 Spike for a Mac menu bar app to display [GitHub actions](https://pinboard.in/u:brunns/t:github-actions) run status.
 
 This is **very** much spike code - no tests, hard-coding everywhere, and the structure is all wrong. Kinda works, though.
 
 ![image](docs/images/screenshot.png)
+
+## GitHub authentication
+
+To run or build this application, you will need to register a
+[GitHub OAuth app](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/creating-an-oauth-app), with Device
+Flow enabled. The Client ID for this app should be stored in the `GITHUB_OAUTH_CLIENT_ID` environment variable before
+running or building:
+
+```shell
+export GITHUB_OAUTH_CLIENT_ID="01234567890123456789"
+```
+
+The app will still work without this token, though private repositories will not be viewable, and the
+[API rate limit](https://docs.github.com/en/rest/overview/resources-in-the-rest-api#rate-limiting) will be quite low
+(and shared between all users on one IP address), meaning only a few repositories can be monitored and that the check
+interval should not be set to be too frequent.
 
 ## CLI
 
@@ -37,12 +53,6 @@ python3 setup.py py2app  # .app will be found in the dist/ folder
 If running from the command line, configuration can be found in `config.json`. When running as an app,
 configuration will be found in `~/.github_actions_status_config.json` (which will be created on the first
 run). Edit this file to specify repositories to monitor (with specific workflows if desired), the check interval (in 
-seconds), and to specify a GitHub personal token.
-
-A [GitHub access token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token)
-can optionally be specified, either as an environment variable, `GITHUB_OAUTH_TOKEN`, or via configuration. The app will
-still work without this token, though private repositories will not be viewable, and the [API rate limit](https://docs.github.com/en/rest/overview/resources-in-the-rest-api#rate-limiting)
-will be quite low (and shared between all users on one IP address), meaning only a few repositories can be monitored,
-and the check interval should not be set too low.
+seconds).
 
 Thanks to [Freja Brunning](https://twitter.com/freja_brunning) for the icon.

@@ -134,3 +134,6 @@ dmypy.json
 # Direnv
 .envrc
 .direnv/
+
+# Local credentials
+/.oauth_token
