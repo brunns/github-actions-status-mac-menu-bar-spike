@@ -93,6 +93,7 @@ class StatusApp:
         self.debug: bool = debug
 
     def run(self):
+        self.app.menu.add(rumps.separator)
         self.app.menu.add(self.auth_holder.menu_item)
         self.app.run(debug=self.debug)
 
