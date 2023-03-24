@@ -20,13 +20,13 @@ OPTIONS = {
     "argv_emulation": True,
     "plist": {
         "LSUIElement": True,
-        "LSEnvironment": {"GITHUB_OAUTH_CLIENT_ID": os.environ["GITHUB_OAUTH_CLIENT_ID", None]},
+        "LSEnvironment": {"GITHUB_OAUTH_CLIENT_ID": os.environ["GITHUB_OAUTH_CLIENT_ID"]},
     },
     "iconfile": "assets/icon.icns",
 }
 
 setup(
-    name="Github Actions Status",
+    name="GitHub Actions Status",
     version="0.6.0",
     app=APP,
     data_files=DATA_FILES,
