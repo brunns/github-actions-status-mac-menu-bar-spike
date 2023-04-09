@@ -46,13 +46,14 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt --upgrade
 python3 setup.py py2app  # .app will be found in the dist/ folder
+ditto -c -k --sequesterRsrc --keepParent "dist/GitHub Actions Status.app" "dist/GitHub Actions Status.app.zip"
 ```
 
 ## Configuration
 
-If running from the command line, configuration can be found in `config.json`. When running as an app,
-configuration will be found in `~/.github_actions_status_config.json` (which will be created on the first
+If running from the command line, configuration can be found in `./config.json`. When running as an app,
+configuration will be found in `~/.github_actions_status/config.json` (which will be created on the first
 run). Edit this file to specify repositories to monitor (with specific workflows if desired), the check interval (in 
-seconds).
+seconds), and some logging details.
 
 Thanks to [Freja Brunning](https://twitter.com/freja_brunning) for the icon.

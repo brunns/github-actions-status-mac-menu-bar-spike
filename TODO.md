@@ -5,8 +5,8 @@ I probably won't do many of these here - this is just a spike after all - but a 
 * ~~[OAuth2 authentication](https://docs.github.com/en/developers/apps/authorizing-oauth-apps#device-flow), both so we don't hit API rate limits, and so we can see private repos. See [OAuth2 links](https://pinboard.in/u:brunns/t:oauth2).~~
 * ~~Use py2app as per [Creating macOS Apps from Python Code](https://camillovisini.com/article/create-macos-menu-bar-app-pomodoro/#creating-macos-apps-from-python-code).~~
     * ~~How to find config file if in app mode?~~
-    * Make the logs available when running as an app
-    * Portable app creation
+    * ~~Make the logs available when running as an app~~
+    * [Distributable app creation](https://blog.glyph.im/2023/03/py-mac-app-for-real.html)
 * Better structure - much better. (Based on domain model - see below.)
 * ~~Configurability - repos to check, check interval.~~
     * (Including eventually a preferences UI perhaps - but a config file will do to start with).
