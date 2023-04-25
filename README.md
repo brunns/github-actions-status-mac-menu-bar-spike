@@ -6,6 +6,21 @@ This is **very** much spike code - no tests, hard-coding everywhere, and the str
 
 ![image](docs/images/screenshot.png)
 
+## Optional tools
+
+[`direnv`](https://direnv.net/) and [`xc` ](https://xcfile.dev/) are both optional.
+
+```sh
+brew tap joerdav/xc
+brew install direnv xc
+```
+
+If you are using [`direnv`](https://direnv.net/), copy [`.envrc.template`](/.envrc.template) to `.envrc`, populate, and
+`direnv allow` it. (If not, you'll need to create the environment variables from [`.envrc.template`](/.envrc.template)
+some other way. The simplest might be to create `.envrc` as normal, and to manually run `source .envrc`.)
+
+If you'd prefer not to use [`xc` ](https://xcfile.dev/) as a task runner, [all command line tasks are defined below](#Tasks) and can be run from the command line.
+
 ## GitHub authentication
 
 To run or build this application, you will need to register a
@@ -22,30 +37,46 @@ The app will still work without this token, though private repositories will not
 (and shared between all users on one IP address), meaning only a few repositories can be monitored and that the check
 interval should not be set to be too frequent.
 
-## CLI
+## Tasks
 
-To run from cli:
+### setup
+One-time setup
 
-```shell
+Run: once
+```sh
 # If you're using pyenv, you'll need to use the system python for this. If not, I expect this is the default.
 pyenv local system  
 python3 -m venv .venv
+```
+
+### deps
+
+Install or upgrade dependencies
+
+Requires: setup
+Run: once
+```sh
 source .venv/bin/activate
 pip install -r requirements.txt --upgrade
+````
+
+### cli
+
+Run from cli
+
+Requires: deps
+```sh 
+source .venv/bin/activate
 python3 status.py -vvv
 ```
 
-## App
+### build
 
-To build as a .app bundle:
+Build as an .app bundle and zip
 
-```shell
-# If you're using pyenv, you'll need to use the system python for this. If not, I expect this is the default.
-pyenv local system  
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt --upgrade
-python3 setup.py py2app  # .app will be found in the dist/ folder
+Requires: deps
+```sh 
+python3 setup.py py2app --arch universal2  # .app will be found in the dist/ folder
 ditto -c -k --sequesterRsrc --keepParent "dist/GitHub Actions Status.app" "dist/GitHub Actions Status.app.zip"
 ```
 
