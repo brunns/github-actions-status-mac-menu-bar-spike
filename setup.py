@@ -15,6 +15,7 @@ DEPENDENCIES = [
     "humanize==4.6.0",
     "python-json-logger==2.0.7",
     "pyperclip==1.8.2",
+    "aiohttp==3.8.4",
 ]
 OPTIONS = {
     "argv_emulation": True,

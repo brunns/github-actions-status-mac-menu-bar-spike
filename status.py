@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import argparse
+import asyncio
 import json
 import logging
 import os
@@ -14,18 +15,18 @@ from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from typing import MutableSequence, Optional, Sequence
 
+import aiohttp
 import arrow
 import humanize
 import pyperclip
 import requests
 import rumps
+from aiohttp.client_exceptions import ClientResponseError
 from box import Box
 from contexttimer import Timer, timer
 from furl import furl
 from ordered_enum import OrderedEnum
 from pythonjsonlogger import jsonlogger
-from requests import HTTPError
-from requests.adapters import HTTPAdapter
 
 TRACE = 5
 logging.addLevelName(TRACE, "TRACE")
@@ -129,10 +130,10 @@ class Repo:
         repo.menu_item.set_callback(repo.on_click)
         return repo
 
-    def check(self, session: requests.Session, auth_holder: "AuthHolder"):
+    async def check(self, session: aiohttp.ClientSession, auth_holder: "AuthHolder"):
         previous_status = self.status
         try:
-            new_runs = self.get_new_runs(session, auth_holder)
+            new_runs = await self.get_new_runs(session, auth_holder)
             if new_runs:
                 *in_progress, completed = new_runs
 
@@ -150,7 +151,7 @@ class Repo:
 
                 if self.workflow:
                     self.workflow_name = completed.name
-        except (HTTPError, RepoRunException) as e:
+        except (ClientResponseError, RepoRunException) as e:
             logger.exception(e)
             self.status = Status.DISCONNECTED
             self.etag = None
@@ -175,7 +176,9 @@ class Repo:
             else f"{self.status.value} {self.owner}/{self.repo} - {last_run_formatted} ago"
         )
 
-    def get_new_runs(self, session: requests.Session, auth_holder: "AuthHolder") -> Sequence[Box]:
+    async def get_new_runs(
+        self, session: aiohttp.ClientSession, auth_holder: "AuthHolder"
+    ) -> Sequence[Box]:  # async
         headers = {
             k: v
             for k, v in [
@@ -192,31 +195,33 @@ class Repo:
 
         logging.log(TRACE, "getting", extra={"url": self.github_api_list_workflow_runs_url})
         with Timer() as t:
-            resp = session.get(self.github_api_list_workflow_runs_url, headers=headers, timeout=5)
-        logging.log(
-            TRACE,
-            "got",
-            extra={"url": self.github_api_list_workflow_runs_url, "elapsed": t.elapsed},
-        )
+            async with session.get(
+                str(self.github_api_list_workflow_runs_url), headers=headers, timeout=5
+            ) as resp:
+                logging.log(
+                    TRACE,
+                    "got",
+                    extra={"url": self.github_api_list_workflow_runs_url, "elapsed": t.elapsed},
+                )
 
-        if resp.status_code == 401:
-            auth_holder.expired()
-        else:
-            resp.raise_for_status()
-            self._log_rate_limit_stats(resp)
-            self.etag = resp.headers["ETag"]
+                if resp.status == 401:
+                    auth_holder.expired()
+                else:
+                    resp.raise_for_status()
+                    self._log_rate_limit_stats(resp)
+                    self.etag = resp.headers["ETag"]
 
-            if resp.status_code == 304:
-                logger.debug("no updates detected", extra={"repo": self})
-                return []
-            else:
-                logger.debug("updates detected", extra={"repo": self})
-                resp_json = resp.json()
-                if not resp_json["total_count"]:
-                    raise RepoRunException("No repo runs detected.")
-                all_runs = [Box(r) for r in resp_json["workflow_runs"]]
-                started = dropwhile(lambda r: r.status == "queued", all_runs)
-                return list(take_until(lambda r: r.status == "completed", started))
+                    if resp.status == 304:
+                        logger.debug("no updates detected", extra={"repo": self})
+                        return []
+                    else:
+                        logger.debug("updates detected", extra={"repo": self})
+                        resp_json = await resp.json()
+                        if not resp_json["total_count"]:
+                            raise RepoRunException("No repo runs detected.")
+                        all_runs = [Box(r) for r in resp_json["workflow_runs"]]
+                        started = dropwhile(lambda r: r.status == "queued", all_runs)
+                        return list(take_until(lambda r: r.status == "completed", started))
 
     @cached_property
     def github_api_list_workflow_runs_url(self, per_page=10) -> furl:
@@ -253,12 +258,7 @@ class GithubActionsStatusChecker:
     def check_all(self, sender):
         previous_overall_status = max(repo.status for repo in self.app.repos)
 
-        adapter = HTTPAdapter(max_retries=3)
-        with requests.Session() as session:
-            session.mount("https://", adapter)
-
-            for repo in self.app.repos:
-                repo.check(session, self.auth_holder)
+        asyncio.run(self._check_all())
 
         overall_status = max(repo.status for repo in self.app.repos)
         self.app.app.title = overall_status.value
@@ -281,6 +281,19 @@ class GithubActionsStatusChecker:
                 subtitle="Workflow failure",
                 message="GitHub Actions workflow run failed.",
             )
+
+    async def _check_all(self):
+        async with aiohttp.ClientSession() as session:
+            # adapter = HTTPAdapter(max_retries=3)  # TODO retries
+            # with requests.Session() as session:  # aiohttp.ClientSession
+            #     session.mount("https://", adapter)
+            tasks = []
+            for repo in self.app.repos:  # asyncio.run, await asyncio.gather
+                task = asyncio.ensure_future(repo.check(session, self.auth_holder))
+                tasks.append(task)
+
+            responses = await asyncio.gather(*tasks)
+            return responses
 
 
 class AuthHolder:
