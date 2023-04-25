@@ -16,6 +16,7 @@ DEPENDENCIES = [
     "python-json-logger==2.0.7",
     "pyperclip==1.8.2",
     "aiohttp==3.8.4",
+    "aiohttp_retry~=2.8.3",
 ]
 OPTIONS = {
     "argv_emulation": True,
@@ -28,7 +29,7 @@ OPTIONS = {
 
 setup(
     name="GitHub Actions Status",
-    version="0.6.0",
+    version="0.7.0",
     app=APP,
     data_files=DATA_FILES,
     options={"py2app": OPTIONS},

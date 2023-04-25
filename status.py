@@ -15,13 +15,13 @@ from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from typing import MutableSequence, Optional, Sequence
 
-import aiohttp
 import arrow
 import humanize
 import pyperclip
 import requests
 import rumps
 from aiohttp.client_exceptions import ClientResponseError
+from aiohttp_retry import RetryClient, FibonacciRetry
 from box import Box
 from contexttimer import Timer, timer
 from furl import furl
@@ -33,7 +33,7 @@ logging.addLevelName(TRACE, "TRACE")
 
 logger = logging.getLogger(__name__)
 
-VERSION = "0.6.0"
+VERSION = "0.7.0"
 LOCALTZ = arrow.now().tzinfo
 AS_APP = getattr(sys, "frozen", None) == "macosx_app"
 DEFAULT_CONFIG = json.dumps(
@@ -130,7 +130,7 @@ class Repo:
         repo.menu_item.set_callback(repo.on_click)
         return repo
 
-    async def check(self, session: aiohttp.ClientSession, auth_holder: "AuthHolder"):
+    async def check(self, session: RetryClient, auth_holder: "AuthHolder"):
         previous_status = self.status
         try:
             new_runs = await self.get_new_runs(session, auth_holder)
@@ -177,7 +177,7 @@ class Repo:
         )
 
     async def get_new_runs(
-        self, session: aiohttp.ClientSession, auth_holder: "AuthHolder"
+        self, session: RetryClient, auth_holder: "AuthHolder"
     ) -> Sequence[Box]:  # async
         headers = {
             k: v
@@ -196,7 +196,7 @@ class Repo:
         logging.log(TRACE, "getting", extra={"url": self.github_api_list_workflow_runs_url})
         with Timer() as t:
             async with session.get(
-                str(self.github_api_list_workflow_runs_url), headers=headers, timeout=5
+                str(self.github_api_list_workflow_runs_url), headers=headers
             ) as resp:
                 logging.log(
                     TRACE,
@@ -283,7 +283,7 @@ class GithubActionsStatusChecker:
             )
 
     async def _check_all(self):
-        async with aiohttp.ClientSession() as session:
+        async with RetryClient(retry_options=(FibonacciRetry(attempts=5))) as session:
             # adapter = HTTPAdapter(max_retries=3)  # TODO retries
             # with requests.Session() as session:  # aiohttp.ClientSession
             #     session.mount("https://", adapter)
