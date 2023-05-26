@@ -8,13 +8,15 @@ import sys
 import time
 import warnings
 import webbrowser
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
+from enum import Enum, auto
 from functools import cached_property
 from itertools import dropwhile
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from typing import MutableSequence, Optional, Sequence
 
+import AppKit
 import arrow
 import humanize
 import pyperclip
@@ -46,7 +48,7 @@ DEFAULT_CONFIG = json.dumps(
         "verbosity": 2,
         "logfile": "/tmp/github_actions_status.log",
     },
-    indent=4,
+    indent=2,
 )
 
 
@@ -67,8 +69,8 @@ def main():
     auth_holder = AuthHolder(AS_APP)
     app = StatusApp(auth_holder, debug=logger.root.level <= logging.DEBUG)
 
-    for repo in config["repos"]:
-        repo = Repo.build(**repo)
+    for index, repo in enumerate(config["repos"]):
+        repo = Repo.build(key=str(index + 1) if index <= 8 else None, **repo)
         app.add(repo)
 
     checker = GithubActionsStatusChecker(app, auth_holder)
@@ -87,7 +89,7 @@ class Status(OrderedEnum):
 
 
 class StatusApp:
-    def __init__(self, auth_holder, debug=False):
+    def __init__(self, auth_holder: "AuthHolder", debug=False):
         self.app: rumps.App = rumps.App("GitHub Actions Status", Status.OK.value)
         self.repos: MutableSequence["Repo"] = []
         self.auth_holder = auth_holder
@@ -124,8 +126,10 @@ class Repo:
     last_run: Optional[arrow.arrow.Arrow] = None
 
     @classmethod
-    def build(cls, owner, repo, workflow=None) -> "Repo":
-        menu_item = rumps.MenuItem(f"{owner}/{repo}/{workflow}" if workflow else f"{owner}/{repo}")
+    def build(cls, owner, repo, workflow=None, key=None) -> "Repo":
+        menu_item = rumps.MenuItem(
+            f"{owner}/{repo}/{workflow}" if workflow else f"{owner}/{repo}", key=key
+        )
         repo = cls(owner, repo, workflow, menu_item)
         repo.menu_item.set_callback(repo.on_click)
         return repo
@@ -212,10 +216,10 @@ class Repo:
                     self.etag = resp.headers["ETag"]
 
                     if resp.status == 304:
-                        logger.debug("no updates detected", extra={"repo": self})
+                        logger.debug("no updates detected", extra={"repo": asdict(self)})
                         return []
                     else:
-                        logger.debug("updates detected", extra={"repo": self})
+                        logger.debug("updates detected", extra={"repo": asdict(self)})
                         resp_json = await resp.json()
                         if not resp_json["total_count"]:
                             raise RepoRunException("No repo runs detected.")
@@ -234,9 +238,18 @@ class Repo:
         url.args["per_page"] = per_page
         return url
 
+    @cached_property
+    def repo_url(self) -> furl:
+        return furl("https://github.com/") / self.owner / self.repo
+
     def on_click(self, sender):
-        logger.debug("clicked", extra={"repo": self, "opening": self.last_run_url})
-        if self.last_run_url:
+        event = Event.get_event()
+        logger.debug("clicked", extra={"repo": asdict(self), "event": asdict(event)})
+        if event.type == EventType.right:
+            logger.debug("opening repo", extra={"url": self.repo_url})
+            webbrowser.open(self.repo_url.url)
+        elif self.last_run_url:
+            logger.debug("opening last run", extra={"url": self.last_run_url})
             webbrowser.open(self.last_run_url.url)
 
     def _log_rate_limit_stats(self, resp):
@@ -247,6 +260,42 @@ class Repo:
             "rate limit",
             extra={"limit": limit, "remaining": remaining, "reset": arrow.get(reset).to(LOCALTZ)},
         )
+
+
+class EventType(Enum):
+    left = auto()
+    right = auto()
+    key = auto()
+
+
+@dataclass
+class Event:
+    type: EventType
+    shift: bool
+    control: bool
+    option: bool
+    command: bool
+
+    @classmethod
+    def get_event(cls) -> "Event":
+        raw_event = AppKit.NSApplication.sharedApplication().currentEvent()
+
+        if raw_event.type() == AppKit.NSEventTypeLeftMouseUp:
+            click = EventType.left
+        elif raw_event.type() == AppKit.NSEventTypeRightMouseUp:
+            click = EventType.right
+        elif raw_event.type() == AppKit.NSEventTypeKeyDown:
+            click = EventType.key
+        else:
+            logger.warning("unknown event type", extra={"event": raw_event})
+            click = None
+
+        shift = bool(raw_event.modifierFlags() & AppKit.NSEventModifierFlagShift)
+        control = bool(raw_event.modifierFlags() & AppKit.NSEventModifierFlagControl)
+        option = bool(raw_event.modifierFlags() & AppKit.NSEventModifierFlagOption)
+        command = bool(raw_event.modifierFlags() & AppKit.NSEventModifierFlagCommand)
+
+        return cls(click, shift, control, option, command)
 
 
 class GithubActionsStatusChecker:
@@ -341,7 +390,7 @@ class AuthHolder:
             menu_item_text = self.CANNOT_AUTHENTICATE
         else:
             menu_item_text = self.AUTHENTICATE
-        self.menu_item = rumps.MenuItem(menu_item_text)
+        self.menu_item = rumps.MenuItem(menu_item_text, key="a")
         if self.github_client_id:
             self.menu_item.set_callback(self.on_click)
 

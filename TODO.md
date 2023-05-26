@@ -17,7 +17,9 @@ I probably won't do many of these here - this is just a spike after all - but a 
 * requests -> [httpx](https://www.python-httpx.org/)
 * furl -> [imurl](https://pypi.org/project/imurl/)
 
-## To-be domain model
+## To-be structure
+
+Separate presentation, domain, and API layers.
 
 ```mermaid
 erDiagram
