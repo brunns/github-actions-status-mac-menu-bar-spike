@@ -23,6 +23,7 @@ from typing import (
     Iterable,
     TypeVar,
     Generator,
+    IO,
 )
 
 import AppKit
@@ -126,7 +127,7 @@ class GitHubAuthenticationException(Exception):
 
 
 @dataclass_json(undefined=Undefined.EXCLUDE)
-@dataclass
+@dataclass(frozen=True)
 class WorkflowRun:
     name: str
     status: str
@@ -310,7 +311,8 @@ class Repo:
         else:
             logger.debug("No failure to re-run", extra={"repo": self.to_dict()})
 
-    def _log_rate_limit_stats(self, resp: ClientResponse) -> None:
+    @staticmethod
+    def _log_rate_limit_stats(resp: ClientResponse) -> None:
         remaining = int(resp.headers["X-RateLimit-Remaining"])
         limit = int(resp.headers["X-RateLimit-Limit"])
         reset = arrow.get(int(resp.headers["X-RateLimit-Reset"])).to(LOCALTZ)
@@ -327,7 +329,7 @@ class EventType(Enum):
 
 
 @dataclass_json
-@dataclass
+@dataclass(frozen=True)
 class Event:
     type: EventType
     shift: bool
@@ -454,11 +456,11 @@ class AuthHolder:
             )
 
         if self.oauth_token:
-            menu_item_text = self.AUTHENTICATED
+            menu_item_text = AuthHolder.AUTHENTICATED
         elif not self.github_client_id:
-            menu_item_text = self.CANNOT_AUTHENTICATE
+            menu_item_text = AuthHolder.CANNOT_AUTHENTICATE
         else:
-            menu_item_text = self.AUTHENTICATE
+            menu_item_text = AuthHolder.AUTHENTICATE
         self.menu_item = rumps.MenuItem(menu_item_text, key="a")
         if self.github_client_id:
             self.menu_item.set_callback(self.on_click)
@@ -479,17 +481,17 @@ class AuthHolder:
             access_token = self._poll_until_completion(device_code, interval)
             if self._test_token(access_token):
                 self.oauth_token = access_token
-                self.menu_item.title = self.AUTHENTICATED
+                self.menu_item.title = AuthHolder.AUTHENTICATED
                 self._update_oauth_token_file()
             else:
                 logger.warning("Authentication - invalid token", extra=locals())
-                self.menu_item.title = self.INVALID
+                self.menu_item.title = AuthHolder.INVALID
 
     def _request_device_and_user_verification_codes(self) -> Tuple[str, int, str, furl]:
         response = requests.post(
-            self.AUTH_URL,
+            AuthHolder.AUTH_URL,
             headers={"Accept": "application/json"},
-            data={"client_id": self.github_client_id, "scope": self.SCOPE},
+            data={"client_id": self.github_client_id, "scope": AuthHolder.SCOPE},
             timeout=5,
         )
         response.raise_for_status()
@@ -504,7 +506,8 @@ class AuthHolder:
         logger.debug("Verification codes.", extra=locals())
         return device_code, interval, user_code, verification_uri
 
-    def _prompt_user_for_code(self, user_code: str, verification_uri: furl) -> bool:
+    @staticmethod
+    def _prompt_user_for_code(user_code: str, verification_uri: furl) -> bool:
         logger.warning("Authentication - prompting user.", extra=locals())
         copy = rumps.alert(
             title="GitHub Actions Status - Authentication",
@@ -527,7 +530,7 @@ class AuthHolder:
 
             # Send a request to GitHub to check if the user has authorized the app
             response = requests.post(
-                self.POLL_URL,
+                AuthHolder.POLL_URL,
                 headers={"Accept": "application/json"},
                 data={
                     "client_id": self.github_client_id,
@@ -546,13 +549,14 @@ class AuthHolder:
                 logger.warning("Authentication - user token expired.", extra=locals())
                 raise GitHubAuthenticationException("User token expired")
 
-    def _test_token(self, access_token: str) -> bool:
+    @staticmethod
+    def _test_token(access_token: str) -> bool:
         response = requests.get(
-            self.CHECK_URL,
+            AuthHolder.CHECK_URL,
             headers={"Accept": "application/json", "Authorization": f"Token {access_token}"},
             timeout=5,
         )
-        logger.info("Tested token", extra={"url": self.CHECK_URL, "response": response})
+        logger.info("Tested token", extra={"url": AuthHolder.CHECK_URL, "response": response})
         return response.ok
 
     def _update_oauth_token_file(self) -> None:
@@ -563,7 +567,7 @@ class AuthHolder:
     def expired(self) -> None:
         logger.warning("token expired")
         self.oauth_token = None
-        self.menu_item.title = self.EXPIRED
+        self.menu_item.title = AuthHolder.EXPIRED
         rumps.notification(
             title="Authentication",
             subtitle="Authentication Expired",
@@ -637,21 +641,32 @@ def create_parser() -> argparse.ArgumentParser:
 class FileTypeWithWrittenDefault(argparse.FileType):
     as_ = """As argparse.FileType, but if read mode file doesn't exist, create it using default value."""
 
-    def __init__(self, mode="r", bufsize=-1, encoding=None, errors=None, default=None):
+    def __init__(
+        self,
+        mode: str = "r",
+        bufsize: int = -1,
+        encoding: str = None,
+        errors: str = None,
+        default: Optional[str] = None,
+    ) -> None:
         super(FileTypeWithWrittenDefault, self).__init__(
             mode=mode, bufsize=bufsize, encoding=encoding, errors=errors
         )
         self._default = default
 
-    def __call__(self, string):
-        path = Path(string)
-        if string != "-" and self._mode == "r" and not path.is_file():
+    def __call__(self, filepath: str) -> IO:
+        path = Path(filepath)
+        if filepath != "-" and self._mode == "r" and not path.is_file():
             with path.open("w") as f:
                 f.write(self._default or "")
-        return super(FileTypeWithWrittenDefault, self).__call__(string)
+        return super(FileTypeWithWrittenDefault, self).__call__(filepath)
 
 
-def init_logging(verbosity, handler=logging.StreamHandler(stream=sys.stdout), silence_packages=()):
+def init_logging(
+    verbosity: int,
+    handler=logging.StreamHandler(stream=sys.stdout),
+    silence_packages: Sequence[str] = (),
+):
     LOG_LEVELS = [logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG, TRACE]
     level = LOG_LEVELS[min(verbosity, len(LOG_LEVELS) - 1)]
     msg_format = "%(message)s"
