@@ -35,7 +35,7 @@ logging.addLevelName(TRACE, "TRACE")
 
 logger = logging.getLogger(__name__)
 
-VERSION = "0.7.0"
+VERSION = "0.8.0"
 LOCALTZ = arrow.now().tzinfo
 AS_APP = getattr(sys, "frozen", None) == "macosx_app"
 DEFAULT_CONFIG = json.dumps(
@@ -70,7 +70,9 @@ def main():
     app = StatusApp(auth_holder, debug=logger.root.level <= logging.DEBUG)
 
     for index, repo in enumerate(config["repos"]):
-        repo = Repo.build(key=str(index + 1) if index <= 8 else None, **repo)
+        repo = Repo.build(
+            key=str(index + 1) if index <= 8 else None, auth_holder=auth_holder, **repo
+        )
         app.add(repo)
 
     checker = GithubActionsStatusChecker(app, auth_holder)
@@ -119,30 +121,29 @@ class Repo:
     repo: str
     workflow: Optional[str]
     menu_item: rumps.MenuItem = field(repr=False)
+    auth_holder: "AuthHolder" = field(repr=False)
     workflow_name: Optional[str] = None
     status: Status = Status.DISCONNECTED
-    last_run_url: Optional[furl] = None
+    last_run: Optional[Box] = None
     etag: Optional[str] = None
-    last_run: Optional[arrow.arrow.Arrow] = None
 
     @classmethod
-    def build(cls, owner, repo, workflow=None, key=None) -> "Repo":
+    def build(cls, owner, repo, auth_holder, workflow=None, key=None) -> "Repo":
         menu_item = rumps.MenuItem(
             f"{owner}/{repo}/{workflow}" if workflow else f"{owner}/{repo}", key=key
         )
-        repo = cls(owner, repo, workflow, menu_item)
+        repo = cls(owner, repo, workflow, menu_item, auth_holder)
         repo.menu_item.set_callback(repo.on_click)
         return repo
 
-    async def check(self, session: RetryClient, auth_holder: "AuthHolder"):
+    async def check(self, session: RetryClient):
         previous_status = self.status
         try:
-            new_runs = await self.get_new_runs(session, auth_holder)
+            new_runs = await self.get_new_runs(session)
             if new_runs:
                 *in_progress, completed = new_runs
 
-                self.last_run_url = furl(completed.html_url)
-                self.last_run = arrow.get(completed.updated_at).to(LOCALTZ)
+                self.last_run = completed
 
                 if in_progress:
                     self.status = (
@@ -172,7 +173,9 @@ class Repo:
             )
 
         last_run_formatted = (
-            humanize.naturaldelta(arrow.now() - self.last_run) if self.last_run else "never"
+            humanize.naturaldelta(arrow.now() - (arrow.get(self.last_run.updated_at).to(LOCALTZ)))
+            if self.last_run
+            else "never"
         )
         self.menu_item.title = (
             f"{self.status.value} {self.owner}/{self.repo}/{self.workflow_name} - {last_run_formatted} ago"
@@ -180,15 +183,15 @@ class Repo:
             else f"{self.status.value} {self.owner}/{self.repo} - {last_run_formatted} ago"
         )
 
-    async def get_new_runs(
-        self, session: RetryClient, auth_holder: "AuthHolder"
-    ) -> Sequence[Box]:  # async
+    async def get_new_runs(self, session: RetryClient) -> Sequence[Box]:  # async
         headers = {
             k: v
             for k, v in [
                 (
                     "Authorization",
-                    f"Token {auth_holder.oauth_token}" if auth_holder.oauth_token else None,
+                    f"Token {self.auth_holder.oauth_token}"
+                    if self.auth_holder.oauth_token
+                    else None,
                 ),
                 ("If-None-Match", self.etag),
                 ("Accept", "application/vnd.github+json"),
@@ -209,17 +212,17 @@ class Repo:
                 )
 
                 if resp.status == 401:
-                    auth_holder.expired()
+                    self.auth_holder.expired()
                 else:
                     resp.raise_for_status()
                     self._log_rate_limit_stats(resp)
                     self.etag = resp.headers["ETag"]
 
                     if resp.status == 304:
-                        logger.debug("no updates detected", extra={"repo": asdict(self)})
+                        logger.debug("no updates detected", extra={"repo": self})
                         return []
                     else:
-                        logger.debug("updates detected", extra={"repo": asdict(self)})
+                        logger.debug("updates detected", extra={"repo": self})
                         resp_json = await resp.json()
                         if not resp_json["total_count"]:
                             raise RepoRunException("No repo runs detected.")
@@ -244,13 +247,41 @@ class Repo:
 
     def on_click(self, sender):
         event = Event.get_event()
-        logger.debug("clicked", extra={"repo": asdict(self), "event": asdict(event)})
-        if event.type == EventType.right:
+        logger.debug("clicked", extra={"repo": self, "event": asdict(event)})
+        if event.control:
+            self.rerun_failed()
+        elif event.type == EventType.right:
             logger.debug("opening repo", extra={"url": self.repo_url})
             webbrowser.open(self.repo_url.url)
-        elif self.last_run_url:
-            logger.debug("opening last run", extra={"url": self.last_run_url})
-            webbrowser.open(self.last_run_url.url)
+        elif self.last_run.html_url:
+            logger.debug("opening last run", extra={"url": self.last_run.html_url})
+            webbrowser.open(self.last_run.html_url)
+
+    def rerun_failed(self):
+        logger.debug("rerunning failed")
+        if self.status == Status.FAILED:
+            url = (
+                furl("https://api.github.com/repos/")
+                / self.owner
+                / self.repo
+                / "actions/runs"
+                / str(self.last_run.id)
+                / "rerun-failed-jobs"
+            )
+            logger.debug("posting to", extra={"url": url})
+            resp = requests.post(
+                url,
+                headers={
+                    "Authorization": f"Token {self.auth_holder.oauth_token}"
+                    if self.auth_holder.oauth_token
+                    else None,
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                },
+            )
+            logger.debug("got", extra={"response": resp})
+        else:
+            logger.debug("No failure to re-run", extra={"repo": self})
 
     def _log_rate_limit_stats(self, resp):
         remaining = int(resp.headers["X-RateLimit-Remaining"])
@@ -338,7 +369,7 @@ class GithubActionsStatusChecker:
             #     session.mount("https://", adapter)
             tasks = []
             for repo in self.app.repos:  # asyncio.run, await asyncio.gather
-                task = asyncio.ensure_future(repo.check(session, self.auth_holder))
+                task = asyncio.ensure_future(repo.check(session))
                 tasks.append(task)
 
             responses = await asyncio.gather(*tasks)

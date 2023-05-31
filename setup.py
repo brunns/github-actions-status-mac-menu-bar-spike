@@ -5,7 +5,7 @@ from setuptools import setup
 APP = ["status.py"]
 DATA_FILES = []
 DEPENDENCIES = [
-    "requests==2.28.2",
+    "requests==2.31.0",
     "rumps==0.4.0",
     "furl==2.1.3",
     "python-box==7.0.1",
@@ -16,7 +16,7 @@ DEPENDENCIES = [
     "python-json-logger==2.0.7",
     "pyperclip==1.8.2",
     "aiohttp==3.8.4",
-    "aiohttp_retry~=2.8.3",
+    "aiohttp_retry==2.8.3",
 ]
 OPTIONS = {
     "argv_emulation": True,
@@ -29,7 +29,7 @@ OPTIONS = {
 
 setup(
     name="GitHub Actions Status",
-    version="0.7.0",
+    version="0.8.0",
     app=APP,
     data_files=DATA_FILES,
     options={"py2app": OPTIONS},
