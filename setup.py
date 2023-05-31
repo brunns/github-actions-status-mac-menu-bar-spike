@@ -8,7 +8,7 @@ DEPENDENCIES = [
     "requests==2.31.0",
     "rumps==0.4.0",
     "furl==2.1.3",
-    "python-box==7.0.1",
+    "dataclasses-json==0.5.7",
     "ordered-enum==0.0.8",
     "arrow==1.2.3",
     "contexttimer==0.3.3",
