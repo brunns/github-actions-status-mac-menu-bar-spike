@@ -1,10 +1,12 @@
 # GitHub Actions Status Mac Menu Bar Spike
 
-Spike for a Mac menu bar app to display [GitHub actions](https://pinboard.in/u:brunns/t:github-actions) run status.
+Spike for a Mac menu bar app to display [GitHub actions](https://pinboard.in/u:brunns/t:github-actions) run statuses. Stati? Whatever.
 
 This is **very** much spike code - no tests, hard-coding everywhere, and the structure is all wrong. Kinda works, though.
 
 ![image](docs/images/screenshot.png)
+
+Thanks to [Freja Brunning](https://twitter.com/freja_brunning) for the icon.
 
 ## Optional tools
 
@@ -19,7 +21,8 @@ If you are using [`direnv`](https://direnv.net/), copy [`.envrc.template`](/.env
 `direnv allow` it. (If not, you'll need to create the environment variables from [`.envrc.template`](/.envrc.template)
 some other way. The simplest might be to create `.envrc` as normal, and to manually run `source .envrc`.)
 
-If you'd prefer not to use [`xc` ](https://xcfile.dev/) as a task runner, [all command line tasks are defined below](#Tasks) and can be run from the command line.
+If you'd prefer not to use [`xc` ](https://xcfile.dev/) as a task runner, [tasks are defined below](#Tasks) and can be 
+run from the command line.
 
 ## Usage
 
@@ -42,6 +45,16 @@ The app will still work without this token, though private repositories will not
 [API rate limit](https://docs.github.com/en/rest/overview/resources-in-the-rest-api#rate-limiting) will be quite low
 (and shared between all users on one IP address), meaning only a few repositories can be monitored and that the check
 interval should not be set to be too frequent.
+
+## Configuration
+
+If running from the command line, configuration can be found in `./config.json`. When running as an app,
+configuration will be found in `~/.github_actions_status/config.json` (which will be created on the first
+run). Edit this file to specify repositories to monitor, the check interval (in seconds), and some logging details.
+
+For repositories, `owner` and `repo` must be configured. In addition, a specific workflow (filename), actor,
+[event](https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows) and branch can be specified
+in any combination.
 
 ## Tasks
 
@@ -85,15 +98,3 @@ Requires: deps
 python3 setup.py py2app --arch universal2 --packages charset_normalizer # .app will be found in the dist/ folder
 ditto -c -k --sequesterRsrc --keepParent "dist/GitHub Actions Status.app" "dist/GitHub Actions Status.app.zip"
 ```
-
-## Configuration
-
-If running from the command line, configuration can be found in `./config.json`. When running as an app,
-configuration will be found in `~/.github_actions_status/config.json` (which will be created on the first
-run). Edit this file to specify repositories to monitor, the check interval (in seconds), and some logging details. 
-
-For repositories, `owner` and `repo` must be configured. In addition, a specific workflow (filename), actor, 
-[event](https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows) and branch can be specified 
-in any combination.
-
-Thanks to [Freja Brunning](https://twitter.com/freja_brunning) for the icon.
