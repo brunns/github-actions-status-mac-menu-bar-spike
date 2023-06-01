@@ -137,6 +137,7 @@ class GitHubAuthenticationException(Exception):
 @dataclass_json(undefined=Undefined.EXCLUDE)
 @dataclass(frozen=True)
 class Actor:
+    id: int
     login: str
     type: str
     site_admin: bool
@@ -145,19 +146,29 @@ class Actor:
 
 @dataclass_json(undefined=Undefined.EXCLUDE)
 @dataclass(frozen=True)
+class Author:
+    name: str
+    email: str
+
+
+@dataclass_json(undefined=Undefined.EXCLUDE)
+@dataclass(frozen=True)
 class Commit:
     id: str
     message: str
+    author: Author
+    committer: Author
     timestamp: arrow.Arrow = field(metadata=config(decoder=lambda d: arrow.get(d).to(LOCALTZ)))
 
 
 @dataclass_json(undefined=Undefined.EXCLUDE)
 @dataclass(frozen=True)
 class Repository:
-    id: str
+    id: int
     name: str
     owner: Actor
     description: str
+    fork: bool
     html_url: furl = field(metadata=config(decoder=furl))
 
 
@@ -168,7 +179,7 @@ class WorkflowRun:
     See https://docs.github.com/en/rest/actions/workflow-runs?apiVersion=2022-11-28
     """
 
-    id: str
+    id: int
     name: str
     actor: Actor
     triggering_actor: Actor
@@ -177,7 +188,10 @@ class WorkflowRun:
     conclusion: str
     head_commit: Commit
     repository: Repository
+    run_attempt: int
+    created_at: arrow.Arrow = field(metadata=config(decoder=lambda d: arrow.get(d).to(LOCALTZ)))
     updated_at: arrow.Arrow = field(metadata=config(decoder=lambda d: arrow.get(d).to(LOCALTZ)))
+    run_started_at: arrow.Arrow = field(metadata=config(decoder=lambda d: arrow.get(d).to(LOCALTZ)))
     html_url: furl = field(metadata=config(decoder=furl))
     rerun_url: furl = field(metadata=config(decoder=furl))
 
