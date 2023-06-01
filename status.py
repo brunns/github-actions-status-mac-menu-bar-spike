@@ -52,6 +52,14 @@ DEFAULT_CONFIG = json.dumps(
     {
         "repos": [
             {"owner": "brunns", "repo": "mbtest"},
+            {
+                "owner": "brunns",
+                "repo": "brunns-matchers",
+                "workflow": "ci.yml",
+                "actor": "brunns",
+                "branch": "master",
+                "event": "push",
+            },
             {"owner": "hamcrest", "repo": "PyHamcrest", "workflow": "main.yml"},
         ],
         "interval": 60,
@@ -128,12 +136,50 @@ class GitHubAuthenticationException(Exception):
 
 @dataclass_json(undefined=Undefined.EXCLUDE)
 @dataclass(frozen=True)
-class WorkflowRun:
+class Actor:
+    login: str
+    type: str
+    site_admin: bool
+    html_url: furl = field(metadata=config(decoder=furl))
+
+
+@dataclass_json(undefined=Undefined.EXCLUDE)
+@dataclass(frozen=True)
+class Commit:
+    id: str
+    message: str
+    timestamp: arrow.Arrow = field(metadata=config(decoder=lambda d: arrow.get(d).to(LOCALTZ)))
+
+
+@dataclass_json(undefined=Undefined.EXCLUDE)
+@dataclass(frozen=True)
+class Repository:
+    id: str
     name: str
+    owner: Actor
+    description: str
+    html_url: furl = field(metadata=config(decoder=furl))
+
+
+@dataclass_json(undefined=Undefined.EXCLUDE)
+@dataclass(frozen=True)
+class WorkflowRun:
+    """Deserialised GutHub Actions Workflow Run.
+    See https://docs.github.com/en/rest/actions/workflow-runs?apiVersion=2022-11-28
+    """
+
+    id: str
+    name: str
+    actor: Actor
+    triggering_actor: Actor
+    event: str
     status: str
     conclusion: str
+    head_commit: Commit
+    repository: Repository
     updated_at: arrow.Arrow = field(metadata=config(decoder=lambda d: arrow.get(d).to(LOCALTZ)))
     html_url: furl = field(metadata=config(decoder=furl))
+    rerun_url: furl = field(metadata=config(decoder=furl))
 
 
 @dataclass_json
@@ -142,6 +188,9 @@ class Repo:
     owner: str
     repo: str
     workflow: Optional[str]
+    actor: Optional[str]
+    branch: Optional[str]
+    event: Optional[str]
     menu_item: rumps.MenuItem = field(
         repr=False, metadata=config(encoder=str, exclude=Exclude.ALWAYS)
     )
@@ -152,11 +201,21 @@ class Repo:
     etag: Optional[str] = None
 
     @classmethod
-    def build(cls, owner, repo, auth_holder, workflow=None, key=None) -> "Repo":
+    def build(
+        cls,
+        owner: str,
+        repo: str,
+        auth_holder: "AuthHolder",
+        workflow: Optional[str] = None,
+        actor: Optional[str] = None,
+        branch: Optional[str] = None,
+        event: Optional[str] = None,
+        key: Optional[str] = None,
+    ) -> "Repo":
         menu_item = rumps.MenuItem(
             f"{owner}/{repo}/{workflow}" if workflow else f"{owner}/{repo}", key=key
         )
-        repo = cls(owner, repo, workflow, menu_item, auth_holder)
+        repo = cls(owner, repo, workflow, actor, branch, event, menu_item, auth_holder)
         repo.menu_item.set_callback(repo.on_click)
         return repo
 
@@ -186,28 +245,31 @@ class Repo:
             self.etag = None
 
         if self.status != previous_status:
-            logger.info(
-                "Repo status",
-                extra={
-                    "owner": self.owner,
-                    "repo": self.repo,
-                    "workflow": self.workflow,
-                    "status": self.status,
-                },
-            )
+            logger.info("repo status changed", extra={"repo": self.to_dict()})
 
-        updated_at_formatted = (
+        self.menu_item.title = self.menu_title
+
+    @property
+    def menu_title(self) -> str:
+        t = [f"{self.status.value} {self.owner}/{self.repo}"]
+        if self.workflow:
+            t.append(f" 🧹{self.workflow_name}")
+        if self.branch:
+            t.append(f" 🌳{self.branch}")
+        if self.event:
+            t.append(f" 🎉{self.event}")
+        if self.actor:
+            t.append(f" @{self.actor}")
+        t += [
+            " - ",
             humanize.naturaldelta(arrow.now() - self.last_run.updated_at)
             if self.last_run
-            else "never"
-        )
-        self.menu_item.title = (
-            f"{self.status.value} {self.owner}/{self.repo}/{self.workflow_name} - {updated_at_formatted} ago"
-            if self.workflow
-            else f"{self.status.value} {self.owner}/{self.repo} - {updated_at_formatted} ago"
-        )
+            else "never",
+        ]
+        return "".join(t)
 
-    async def get_new_runs(self, session: RetryClient) -> Sequence[WorkflowRun]:  # async
+    async def get_new_runs(self, session: RetryClient) -> Sequence[WorkflowRun]:
+        """See https://docs.github.com/en/rest/actions/workflow-runs?apiVersion=2022-11-28#list-workflow-runs-for-a-repository"""
         headers = {
             k: v
             for k, v in [
@@ -267,6 +329,12 @@ class Repo:
         url = url / "runs"
 
         url.args["per_page"] = per_page
+        if self.actor:
+            url.args["actor"] = self.actor
+        if self.actor:
+            url.args["branch"] = self.branch
+        if self.actor:
+            url.args["event"] = self.event
         return url
 
     @cached_property
@@ -275,18 +343,25 @@ class Repo:
 
     def on_click(self, sender: rumps.MenuItem) -> None:
         event = Event.get_event()
-        logger.debug("clicked", extra={"repo": self, "event": asdict(event)})
+        logger.debug("clicked", extra={"repo": self.to_dict(), "event": asdict(event)})
         if event.control:
-            self.rerun_failed()
+            logger.info("rerunning failed jobs")
+            self.rerun_failed_jobs()
+        elif event.option:
+            logger.info("opening actor", extra={"url": self.last_run.actor.html_url})
+            webbrowser.open(self.last_run.actor.html_url.url)
+        elif event.command:
+            url = self.repo_url / "commit" / self.last_run.head_commit.id
+            logger.info("opening commit", extra={"url": url})
+            webbrowser.open(url.url)
         elif event.type == EventType.right:
-            logger.debug("opening repo", extra={"url": self.repo_url})
+            logger.info("opening repo", extra={"url": self.repo_url})
             webbrowser.open(self.repo_url.url)
         elif self.last_run.html_url:
-            logger.debug("opening last run", extra={"url": self.last_run.html_url})
+            logger.info("opening last workflow run", extra={"url": self.last_run.html_url})
             webbrowser.open(self.last_run.html_url.url)
 
-    def rerun_failed(self) -> None:
-        logger.debug("rerunning failed")
+    def rerun_failed_jobs(self) -> None:
         if self.status == Status.FAILED:
             url = (
                 furl("https://api.github.com/repos/")
@@ -296,7 +371,6 @@ class Repo:
                 / str(self.last_run.id)
                 / "rerun-failed-jobs"
             )
-            logger.debug("posting to", extra={"url": url})
             resp = requests.post(
                 url,
                 headers={
@@ -308,8 +382,9 @@ class Repo:
                 },
             )
             logger.debug("got", extra={"response": resp})
+            resp.raise_for_status()
         else:
-            logger.debug("No failure to re-run", extra={"repo": self.to_dict()})
+            logger.info("no workflow failure to re-run", extra={"repo": self.to_dict()})
 
     @staticmethod
     def _log_rate_limit_stats(resp: ClientResponse) -> None:
@@ -395,11 +470,8 @@ class GithubActionsStatusChecker:
 
     async def _check_all(self):
         async with RetryClient(retry_options=(FibonacciRetry(attempts=5))) as session:
-            # adapter = HTTPAdapter(max_retries=3)  # TODO retries
-            # with requests.Session() as session:  # aiohttp.ClientSession
-            #     session.mount("https://", adapter)
             tasks = []
-            for repo in self.app.repos:  # asyncio.run, await asyncio.gather
+            for repo in self.app.repos:
                 task = asyncio.ensure_future(repo.check(session))
                 tasks.append(task)
 

@@ -6,20 +6,34 @@
     },
     {
       "owner": "brunns",
-      "repo": "brunns-matchers"
+      "repo": "brunns-matchers",
+      "workflow": "ci.yml",
+      "actor": "brunns",
+      "branch": "master",
+      "event": "push"
     },
     {
       "owner": "brunns",
-      "repo": "brunns-row"
+      "repo": "brunns-matchers",
+      "actor": "brunns",
+      "branch": "master",
+      "event": "schedule"
     },
     {
       "owner": "brunns",
-      "repo": "brunns-builder"
+      "repo": "brunns-row",
+      "actor": "brunns"
+    },
+    {
+      "owner": "brunns",
+      "repo": "brunns-builder",
+      "branch": "master"
     },
     {
       "owner": "brunns",
       "repo": "PyHamcrest",
-      "workflow": "main.yml"
+      "workflow": "main.yml",
+      "event": "push"
     },
     {
       "owner": "brunns",

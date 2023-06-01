@@ -21,6 +21,12 @@ some other way. The simplest might be to create `.envrc` as normal, and to manua
 
 If you'd prefer not to use [`xc` ](https://xcfile.dev/) as a task runner, [all command line tasks are defined below](#Tasks) and can be run from the command line.
 
+## Usage
+
+Left-clicking will take you to the last workflow run. Right-clicking takes you to the main page for the repository. 
+Control-clicking will re-run failed jobs, if any. Option-clicking takes you to the actor who triggered the run, and 
+command-clicking takes you to the commit which triggered the run.
+
 ## GitHub authentication
 
 To run or build this application, you will need to register a
@@ -84,7 +90,10 @@ ditto -c -k --sequesterRsrc --keepParent "dist/GitHub Actions Status.app" "dist/
 
 If running from the command line, configuration can be found in `./config.json`. When running as an app,
 configuration will be found in `~/.github_actions_status/config.json` (which will be created on the first
-run). Edit this file to specify repositories to monitor (with specific workflows if desired), the check interval (in 
-seconds), and some logging details.
+run). Edit this file to specify repositories to monitor, the check interval (in seconds), and some logging details. 
+
+For repositories, `owner` and `repo` must be configured. In addition, a specific workflow (filename), actor, 
+[event](https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows) and branch can be specified 
+in any combination.
 
 Thanks to [Freja Brunning](https://twitter.com/freja_brunning) for the icon.
