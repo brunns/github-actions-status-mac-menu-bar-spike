@@ -88,9 +88,8 @@ def main():
     app = StatusApp(auth_holder, debug=logger.root.level <= logging.DEBUG)
 
     for index, repo in enumerate(config["repos"]):
-        repo = Repo.build(
-            key=str(index + 1) if index <= 8 else None, auth_holder=auth_holder, **repo
-        )
+        key = str(index + 1) if index <= 8 else None
+        repo = Repo.build(auth_holder=auth_holder, key=key, **repo)
         app.add(repo)
 
     checker = GithubActionsStatusChecker(app, auth_holder)
@@ -226,9 +225,7 @@ class Repo:
         event: Optional[str] = None,
         key: Optional[str] = None,
     ) -> "Repo":
-        menu_item = rumps.MenuItem(
-            f"{owner}/{repo}/{workflow}" if workflow else f"{owner}/{repo}", key=key
-        )
+        menu_item = rumps.MenuItem(f"{owner}/{repo}", key=key)
         repo = cls(owner, repo, workflow, actor, branch, event, menu_item, auth_holder)
         repo.menu_item.set_callback(repo.on_click)
         return repo
@@ -555,7 +552,8 @@ class AuthHolder:
         """Authenticate against GitHub using OAuth device flow.
         See https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#device-flow
         """
-        logger.debug("clicked", extra={"AuthHolder": self})
+        event = Event.get_event()
+        logger.debug("clicked", extra={"AuthHolder": self.to_dict(), "event": event.to_dict()})
 
         (
             device_code,
