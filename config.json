@@ -7,16 +7,13 @@
     {
       "owner": "brunns",
       "repo": "brunns-matchers",
-      "workflow": "ci.yml",
       "actor": "brunns",
-      "branch": "master",
       "event": "push"
     },
     {
       "owner": "brunns",
       "repo": "brunns-matchers",
       "actor": "brunns",
-      "branch": "master",
       "event": "schedule"
     },
     {

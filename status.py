@@ -342,9 +342,9 @@ class Repo:
         url.args["per_page"] = per_page
         if self.actor:
             url.args["actor"] = self.actor
-        if self.actor:
+        if self.branch:
             url.args["branch"] = self.branch
-        if self.actor:
+        if self.event:
             url.args["event"] = self.event
         return url
 
@@ -365,7 +365,7 @@ class Repo:
             url = self.repo_url / "commit" / self.last_run.head_commit.id
             logger.info("opening commit", extra={"url": url})
             webbrowser.open(url.url)
-        elif event.type == EventType.right:
+        elif event.type == Event.EventType.right:
             logger.info("opening repo", extra={"url": self.repo_url})
             webbrowser.open(self.repo_url.url)
         elif self.last_run.html_url:
@@ -408,15 +408,14 @@ class Repo:
         )
 
 
-class EventType(Enum):
-    left = auto()
-    right = auto()
-    key = auto()
-
-
 @dataclass_json
 @dataclass(frozen=True)
 class Event:
+    class EventType(Enum):
+        left = auto()
+        right = auto()
+        key = auto()
+
     type: EventType
     shift: bool
     control: bool
@@ -428,11 +427,11 @@ class Event:
         raw_event = AppKit.NSApplication.sharedApplication().currentEvent()
 
         if raw_event.type() == AppKit.NSEventTypeLeftMouseUp:
-            click = EventType.left
+            click = Event.EventType.left
         elif raw_event.type() == AppKit.NSEventTypeRightMouseUp:
-            click = EventType.right
+            click = Event.EventType.right
         elif raw_event.type() == AppKit.NSEventTypeKeyDown:
-            click = EventType.key
+            click = Event.EventType.key
         else:
             logger.warning("unknown event type", extra={"event": raw_event})
             click = None

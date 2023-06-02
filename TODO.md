@@ -16,6 +16,7 @@ I probably won't do many of these here - this is just a spike after all - but a 
 * ~~What's up with the threads hanging?~~ (Might be fixed?)
 * requests -> [httpx](https://www.python-httpx.org/)
 * furl -> [imurl](https://pypi.org/project/imurl/)
+* Display error message if config broken.
 
 ## To-be structure
 
