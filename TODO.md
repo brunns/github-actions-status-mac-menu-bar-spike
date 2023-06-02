@@ -12,7 +12,7 @@ I probably won't do many of these here - this is just a spike after all - but a 
     * (Including eventually a preferences UI perhaps - but a config file will do to start with).
 * ~~Deal with multiple workflows per repo.~~
 * Pause/restart app.
-* Trigger workflow runs?
+* ~~Trigger workflow runs?~~
 * ~~What's up with the threads hanging?~~ (Might be fixed?)
 * requests -> [httpx](https://www.python-httpx.org/)
 * furl -> [imurl](https://pypi.org/project/imurl/)
