@@ -71,16 +71,20 @@ DEFAULT_CONFIG = json.dumps(
 
 
 def main():
-    if AS_APP:
-        config = get_config_from_config_file(
-            Path.home() / ".github_actions_status" / "config.json", DEFAULT_CONFIG
-        )
-        interval = config["interval"]
-    else:  # CLI
-        args = parse_args()
-        logger.debug("args", extra=vars(args))
-        config = json.load(args.config)
-        interval = args.interval or config["interval"]
+    try:
+        if AS_APP:
+            config = get_config_from_config_file(
+                Path.home() / ".github_actions_status" / "config.json", DEFAULT_CONFIG
+            )
+            interval = config["interval"]
+        else:  # CLI
+            args = parse_args()
+            logger.debug("args", extra=vars(args))
+            config = json.load(args.config)
+            interval = args.interval or config["interval"]
+    except json.JSONDecodeError as e:
+        rumps.alert("Error reading config file.", message=e.msg)
+        raise
 
     logger.debug("config", extra=config)
 
