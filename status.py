@@ -115,7 +115,7 @@ class Status(OrderedEnum):
 @dataclass
 class StatusApp:
     auth_holder: "AuthHolder"
-    app: rumps.App = rumps.App("GitHub Actions Status", Status.OK.value)
+    app: rumps.App = rumps.App("GitHub Actions Status", Status.OK.value, template=True)
     repos: MutableSequence["Repo"] = field(default_factory=list)
     debug: bool = False
 
@@ -167,6 +167,9 @@ class Commit:
 @dataclass_json(undefined=Undefined.EXCLUDE)
 @dataclass(frozen=True)
 class Repository:
+    """Deserialised GitHub Repository details.
+    See https://docs.github.com/en/rest/repos/repos?apiVersion=2022-11-28
+    """
     id: int
     name: str
     owner: Actor
@@ -178,7 +181,7 @@ class Repository:
 @dataclass_json(undefined=Undefined.EXCLUDE)
 @dataclass(frozen=True)
 class WorkflowRun:
-    """Deserialised GutHub Actions Workflow Run.
+    """Deserialised GitHub Actions Workflow Run.
     See https://docs.github.com/en/rest/actions/workflow-runs?apiVersion=2022-11-28
     """
 
@@ -284,7 +287,7 @@ class Repo:
         return "".join(t)
 
     async def get_new_runs(self, session: RetryClient) -> Sequence[WorkflowRun]:
-        """See https://docs.github.com/en/rest/actions/workflow-runs?apiVersion=2022-11-28#list-workflow-runs-for-a-repository"""
+        """See https://docs.github.com/en/rest/actions/workflow-runs?apiVersion=2022-11-28#list-workflow-runs-for-a-repository for docs"""
         headers = {
             k: v
             for k, v in [
@@ -337,7 +340,9 @@ class Repo:
 
     @cached_property
     def github_api_list_workflow_runs_url(self, per_page=10) -> furl:
-        # See https://docs.github.com/en/rest/actions/workflow-runs?apiVersion=2022-11-28#about-workflow-runs-in-github-actions for docs
+        """URL for getting the latest workflow runs.
+        See https://docs.github.com/en/rest/actions/workflow-runs?apiVersion=2022-11-28#about-workflow-runs-in-github-actions for docs
+        """
         url = furl("https://api.github.com/repos/") / self.owner / self.repo / "actions"
         if self.workflow:
             url = url / "workflows" / self.workflow
@@ -378,16 +383,8 @@ class Repo:
 
     def rerun_failed_jobs(self) -> None:
         if self.status == Status.FAILED:
-            url = (
-                furl("https://api.github.com/repos/")
-                / self.owner
-                / self.repo
-                / "actions/runs"
-                / str(self.last_run.id)
-                / "rerun-failed-jobs"
-            )
             resp = requests.post(
-                url,
+                self.github_api_rerun_failed_jobs_url,
                 headers={
                     "Authorization": f"Token {self.auth_holder.oauth_token}"
                     if self.auth_holder.oauth_token
@@ -400,6 +397,17 @@ class Repo:
             resp.raise_for_status()
         else:
             logger.info("no workflow failure to re-run", extra={"repo": self.to_dict()})
+
+    @cached_property
+    def github_api_rerun_failed_jobs_url(self) -> furl:
+        return (
+            furl("https://api.github.com/repos/")
+            / self.owner
+            / self.repo
+            / "actions/runs"
+            / str(self.last_run.id)
+            / "rerun-failed-jobs"
+        )
 
     @staticmethod
     def _log_rate_limit_stats(resp: ClientResponse) -> None:
