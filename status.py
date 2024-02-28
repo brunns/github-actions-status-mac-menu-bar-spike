@@ -30,13 +30,13 @@ import AppKit
 import arrow
 import humanize
 import pyperclip
-import requests
+import httpx
 import rumps
 from aiohttp.client_exceptions import ClientResponseError
 from aiohttp_retry import RetryClient, FibonacciRetry, ClientResponse
 from contexttimer import Timer, timer
 from dataclasses_json import dataclass_json, Undefined, Exclude, config
-from furl import furl
+from yarl import URL
 from ordered_enum import OrderedEnum
 from pythonjsonlogger import jsonlogger
 
@@ -144,7 +144,7 @@ class Actor:
     login: str
     type: str
     site_admin: bool
-    html_url: furl = field(metadata=config(decoder=furl))
+    html_url: URL = field(metadata=config(decoder=URL))
 
 
 @dataclass_json(undefined=Undefined.EXCLUDE)
@@ -175,7 +175,7 @@ class Repository:
     owner: Actor
     description: str
     fork: bool
-    html_url: furl = field(metadata=config(decoder=furl))
+    html_url: URL = field(metadata=config(decoder=URL))
 
 
 @dataclass_json(undefined=Undefined.EXCLUDE)
@@ -198,8 +198,8 @@ class WorkflowRun:
     created_at: arrow.Arrow = field(metadata=config(decoder=lambda d: arrow.get(d).to(LOCALTZ)))
     updated_at: arrow.Arrow = field(metadata=config(decoder=lambda d: arrow.get(d).to(LOCALTZ)))
     run_started_at: arrow.Arrow = field(metadata=config(decoder=lambda d: arrow.get(d).to(LOCALTZ)))
-    html_url: furl = field(metadata=config(decoder=furl))
-    rerun_url: furl = field(metadata=config(decoder=furl))
+    html_url: URL = field(metadata=config(decoder=URL))
+    rerun_url: URL = field(metadata=config(decoder=URL))
 
 
 @dataclass_json
@@ -339,27 +339,27 @@ class Repo:
                         return list(take_until(lambda r: r.status == "completed", started))
 
     @cached_property
-    def github_api_list_workflow_runs_url(self, per_page=10) -> furl:
+    def github_api_list_workflow_runs_url(self, per_page=10) -> URL:
         """URL for getting the latest workflow runs.
         See https://docs.github.com/en/rest/actions/workflow-runs?apiVersion=2022-11-28#about-workflow-runs-in-github-actions for docs
         """
-        url = furl("https://api.github.com/repos/") / self.owner / self.repo / "actions"
+        url = URL("https://api.github.com/repos/") / self.owner / self.repo / "actions"
         if self.workflow:
             url = url / "workflows" / self.workflow
         url = url / "runs"
 
-        url.args["per_page"] = per_page
+        url = url.update_query({"per_page": per_page})
         if self.actor:
-            url.args["actor"] = self.actor
+            url = url.update_query({"actor": self.actor})
         if self.branch:
-            url.args["branch"] = self.branch
+            url = url.update_query({"branch": self.branch})
         if self.event:
-            url.args["event"] = self.event
+            url = url.update_query({"event": self.event})
         return url
 
     @cached_property
-    def repo_url(self) -> furl:
-        return furl("https://github.com/") / self.owner / self.repo
+    def repo_url(self) -> URL:
+        return URL("https://github.com/") / self.owner / self.repo
 
     def on_click(self, sender: rumps.MenuItem) -> None:
         event = Event.get_event()
@@ -369,22 +369,22 @@ class Repo:
             self.rerun_failed_jobs()
         elif event.option:
             logger.info("opening actor", extra={"url": self.last_run.actor.html_url})
-            webbrowser.open(self.last_run.actor.html_url.url)
+            webbrowser.open(str(self.last_run.actor.html_url))
         elif event.command:
             url = self.repo_url / "commit" / self.last_run.head_commit.id
             logger.info("opening commit", extra={"url": url})
-            webbrowser.open(url.url)
+            webbrowser.open(str(url))
         elif event.type == Event.EventType.right:
             logger.info("opening repo", extra={"url": self.repo_url})
-            webbrowser.open(self.repo_url.url)
+            webbrowser.open(str(self.repo_url))
         elif self.last_run.html_url:
             logger.info("opening last workflow run", extra={"url": self.last_run.html_url})
-            webbrowser.open(self.last_run.html_url.url)
+            webbrowser.open(str(self.last_run.html_url))
 
     def rerun_failed_jobs(self) -> None:
         if self.status == Status.FAILED:
-            resp = requests.post(
-                self.github_api_rerun_failed_jobs_url,
+            resp = httpx.post(
+                str(self.github_api_rerun_failed_jobs_url),
                 headers={
                     "Authorization": f"Token {self.auth_holder.oauth_token}"
                     if self.auth_holder.oauth_token
@@ -399,9 +399,9 @@ class Repo:
             logger.info("no workflow failure to re-run", extra={"repo": self.to_dict()})
 
     @cached_property
-    def github_api_rerun_failed_jobs_url(self) -> furl:
+    def github_api_rerun_failed_jobs_url(self) -> URL:
         return (
-            furl("https://api.github.com/repos/")
+            URL("https://api.github.com/repos/")
             / self.owner
             / self.repo
             / "actions/runs"
@@ -438,9 +438,9 @@ class Event:
     def get_event(cls) -> "Event":
         raw_event = AppKit.NSApplication.sharedApplication().currentEvent()
 
-        if raw_event.type() == AppKit.NSEventTypeLeftMouseUp:
+        if raw_event.type() in {AppKit.NSEventTypeLeftMouseUp, AppKit.NSEventTypeLeftMouseDown}:
             click = Event.EventType.left
-        elif raw_event.type() == AppKit.NSEventTypeRightMouseUp:
+        elif raw_event.type() in {AppKit.NSEventTypeRightMouseUp, AppKit.NSEventTypeRightMouseDown}:
             click = Event.EventType.right
         elif raw_event.type() == AppKit.NSEventTypeKeyDown:
             click = Event.EventType.key
@@ -511,9 +511,9 @@ class AuthHolder:
         repr=False, metadata=config(encoder=str, exclude=Exclude.ALWAYS)
     )
 
-    AUTH_URL = furl("https://github.com/login/device/code")
-    POLL_URL = furl("https://github.com/login/oauth/access_token")
-    CHECK_URL = furl("https://api.github.com/user/issues")
+    AUTH_URL = URL("https://github.com/login/device/code")
+    POLL_URL = URL("https://github.com/login/oauth/access_token")
+    CHECK_URL = URL("https://api.github.com/user/issues")
     SCOPE = "repo"
 
     AUTHENTICATED = "✅ Authenticated"
@@ -582,8 +582,8 @@ class AuthHolder:
                 logger.warning("Authentication - invalid token", extra=locals())
                 self.menu_item.title = AuthHolder.INVALID
 
-    def _request_device_and_user_verification_codes(self) -> Tuple[str, int, str, furl]:
-        response = requests.post(
+    def _request_device_and_user_verification_codes(self) -> Tuple[str, int, str, URL]:
+        response = httpx.post(
             AuthHolder.AUTH_URL,
             headers={"Accept": "application/json"},
             data={"client_id": self.github_client_id, "scope": AuthHolder.SCOPE},
@@ -595,14 +595,14 @@ class AuthHolder:
             response_json["device_code"],
             response_json["interval"],
             response_json["user_code"],
-            furl(response_json["verification_uri"]),
+            URL(response_json["verification_uri"]),
         )
 
         logger.debug("Verification codes.", extra=locals())
         return device_code, interval, user_code, verification_uri
 
     @staticmethod
-    def _prompt_user_for_code(user_code: str, verification_uri: furl) -> bool:
+    def _prompt_user_for_code(user_code: str, verification_uri: URL) -> bool:
         logger.warning("Authentication - prompting user.", extra=locals())
         copy = rumps.alert(
             title="GitHub Actions Status - Authentication",
@@ -624,7 +624,7 @@ class AuthHolder:
             logger.debug("Polling for user action.")
 
             # Send a request to GitHub to check if the user has authorized the app
-            response = requests.post(
+            response = httpx.post(
                 AuthHolder.POLL_URL,
                 headers={"Accept": "application/json"},
                 data={
@@ -646,7 +646,7 @@ class AuthHolder:
 
     @staticmethod
     def _test_token(access_token: str) -> bool:
-        response = requests.get(
+        response = httpx.get(
             AuthHolder.CHECK_URL,
             headers={"Accept": "application/json", "Authorization": f"Token {access_token}"},
             timeout=5,

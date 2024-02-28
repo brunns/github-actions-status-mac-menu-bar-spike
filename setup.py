@@ -5,18 +5,19 @@ from setuptools import setup
 APP = ["status.py"]
 DATA_FILES = []
 DEPENDENCIES = [
-    "requests==2.31.0",
+    "httpx==0.27.0",
     "rumps==0.4.0",
-    "furl==2.1.3",
-    "dataclasses-json==0.5.7",
+    "yarl==1.9.4",
+    "dataclasses-json==0.6.4",
     "ordered-enum==0.0.8",
-    "arrow==1.2.3",
+    "arrow==1.3.0",
     "contexttimer==0.3.3",
-    "humanize==4.6.0",
+    "humanize==4.9.0",
     "python-json-logger==2.0.7",
     "pyperclip==1.8.2",
-    "aiohttp==3.8.4",
+    "aiohttp==3.9.3",
     "aiohttp_retry==2.8.3",
+    "charset-normalizer==3.3.2",
 ]
 OPTIONS = {
     "argv_emulation": True,
@@ -29,7 +30,7 @@ OPTIONS = {
 
 setup(
     name="GitHub Actions Status",
-    version="0.8.0",
+    version="0.9.0",
     app=APP,
     data_files=DATA_FILES,
     options={"py2app": OPTIONS},
