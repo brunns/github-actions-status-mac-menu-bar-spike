@@ -20,12 +20,13 @@ DEPENDENCIES = [
     "charset-normalizer==3.3.2",
 ]
 OPTIONS = {
-    "argv_emulation": True,
+    "argv_emulation": False,
     "plist": {
         "LSUIElement": True,
         "LSEnvironment": {"GITHUB_OAUTH_CLIENT_ID": os.environ["GITHUB_OAUTH_CLIENT_ID"]},
     },
     "iconfile": "assets/icon.icns",
+    "includes": ["charset_normalizer", "imp"],
 }
 
 setup(

@@ -95,6 +95,6 @@ Build as an .app bundle and zip
 
 Requires: deps
 ```sh 
-python3 setup.py py2app --arch universal2 --packages charset_normalizer # .app will be found in the dist/ folder
+python3 setup.py py2app --arch universal2  # .app will be found in the dist/ folder
 ditto -c -k --sequesterRsrc --keepParent "dist/GitHub Actions Status.app" "dist/GitHub Actions Status.app.zip"
 ```
