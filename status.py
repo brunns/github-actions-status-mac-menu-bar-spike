@@ -106,8 +106,8 @@ def main():
 class Status(OrderedEnum):
     NO_RUNS = "\N{Digit Zero}\N{Variation Selector-16}\N{Combining Enclosing Keycap}"
     OK = "\N{Large Green Circle}\N{Variation Selector-16}"
-    RUNNING_FROM_OK = "\N{Black Universal Recycling Symbol}\N{Variation Selector-16}"
-    RUNNING_FROM_FAILED = "\N{Large Yellow Circle}\N{Variation Selector-16}"
+    RUNNING_FROM_OK = "\N{BLACK RIGHT-POINTING TRIANGLE}\N{Variation Selector-16}"
+    RUNNING_FROM_FAILED = "\N{Clockwise Rightwards and Leftwards Open Circle Arrows}\N{Variation Selector-16}"
     FAILED = "\N{Large Red Circle}\N{Variation Selector-16}"
     DISCONNECTED = "\N{No Entry Sign}\N{Variation Selector-16}"
 
@@ -274,14 +274,14 @@ class Repo:
     @property
     def menu_title(self) -> str:
         t = [f"{self.status.value} {self.owner}/{self.repo}"]
-        if self.workflow:
-            t.append(f" \N{Broom}{self.workflow_name}")
         if self.branch:
-            t.append(f" \N{Deciduous Tree}{self.branch}")
+            t.append(f" \N{Herb}\N{Variation Selector-16}{self.branch}")
+        if self.workflow:
+            t.append(f" \N{Hammer}\N{Variation Selector-16}{self.workflow_name}")
         if self.event:
-            t.append(f" \N{Party Popper}{self.event}")
+            t.append(f" \N{Party Popper}\N{Variation Selector-16}{self.event}")
         if self.actor:
-            t.append(f" \N{Performing Arts}{self.actor}")
+            t.append(f" \N{Adult}\N{Variation Selector-16}{self.actor}")
         t += [
             " - ",
             humanize.naturaldelta(arrow.now() - self.last_run.updated_at)
