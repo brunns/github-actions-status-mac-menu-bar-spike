@@ -45,7 +45,7 @@ logging.addLevelName(TRACE, "TRACE")
 
 logger = logging.getLogger(__name__)
 
-VERSION = "0.8.0"
+VERSION = "0.9.0"
 LOCALTZ = arrow.now().tzinfo
 AS_APP = getattr(sys, "frozen", None) == "macosx_app"
 DEFAULT_CONFIG = json.dumps(
@@ -104,11 +104,12 @@ def main():
 
 
 class Status(OrderedEnum):
-    OK = "🟢"
-    RUNNING_FROM_OK = "♻️"
-    RUNNING_FROM_FAILED = "🟠"
-    FAILED = "🔴"
-    DISCONNECTED = "🚫"
+    NO_RUNS = "\N{Digit Zero}\N{Variation Selector-16}\N{Combining Enclosing Keycap}"
+    OK = "\N{Large Green Circle}\N{Variation Selector-16}"
+    RUNNING_FROM_OK = "\N{Black Universal Recycling Symbol}\N{Variation Selector-16}"
+    RUNNING_FROM_FAILED = "\N{Large Yellow Circle}\N{Variation Selector-16}"
+    FAILED = "\N{Large Red Circle}\N{Variation Selector-16}"
+    DISCONNECTED = "\N{No Entry Sign}\N{Variation Selector-16}"
 
 
 @dataclass_json
@@ -129,7 +130,7 @@ class StatusApp:
         self.app.menu.add(repo.menu_item)
 
 
-class RepoRunException(Exception):
+class NoRepoRunException(Exception):
     pass
 
 
@@ -257,7 +258,10 @@ class Repo:
 
                 if self.workflow:
                     self.workflow_name = completed.name
-        except (ClientResponseError, RepoRunException) as e:
+        except NoRepoRunException as e:
+            logger.exception(e)
+            self.status = Status.NO_RUNS
+        except ClientResponseError as e:
             logger.exception(e)
             self.status = Status.DISCONNECTED
             self.etag = None
@@ -271,13 +275,13 @@ class Repo:
     def menu_title(self) -> str:
         t = [f"{self.status.value} {self.owner}/{self.repo}"]
         if self.workflow:
-            t.append(f" 🧹{self.workflow_name}")
+            t.append(f" \N{Broom}{self.workflow_name}")
         if self.branch:
-            t.append(f" 🌳{self.branch}")
+            t.append(f" \N{Deciduous Tree}{self.branch}")
         if self.event:
-            t.append(f" 🎉{self.event}")
+            t.append(f" \N{Party Popper}{self.event}")
         if self.actor:
-            t.append(f" @{self.actor}")
+            t.append(f" \N{Performing Arts}{self.actor}")
         t += [
             " - ",
             humanize.naturaldelta(arrow.now() - self.last_run.updated_at)
@@ -326,10 +330,10 @@ class Repo:
                         logger.debug("no updates detected", extra={"repo": self.to_dict()})
                         return []
                     else:
-                        logger.debug("updates detected", extra={"repo": self.to_dict()})
                         resp_json = await resp.json()
+                        logger.debug("updates detected", extra={"repo": self.to_dict(), "detail": resp_json})
                         if not resp_json["total_count"]:
-                            raise RepoRunException("No repo runs detected.")
+                            raise NoRepoRunException("No repo runs detected.")
                         all_runs = [WorkflowRun.from_dict(r) for r in resp_json["workflow_runs"]]
                         logger.debug(
                             "all runs",
@@ -377,7 +381,7 @@ class Repo:
         elif event.type == Event.EventType.right:
             logger.info("opening repo", extra={"url": self.repo_url})
             webbrowser.open(str(self.repo_url))
-        elif self.last_run.html_url:
+        elif self.last_run and self.last_run.html_url:
             logger.info("opening last workflow run", extra={"url": self.last_run.html_url})
             webbrowser.open(str(self.last_run.html_url))
 
@@ -516,11 +520,11 @@ class AuthHolder:
     CHECK_URL = URL("https://api.github.com/user/issues")
     SCOPE = "repo"
 
-    AUTHENTICATED = "✅ Authenticated"
-    AUTHENTICATE = "❓ Authenticate"
-    INVALID = "❌ Invalid"
-    EXPIRED = "❌ Expired"
-    CANNOT_AUTHENTICATE = "❌ Cannot authenticate"
+    AUTHENTICATED = "\N{WHITE HEAVY CHECK MARK}\N{Variation Selector-16} Authenticated"
+    AUTHENTICATE = "\N{BLACK QUESTION MARK ORNAMENT}\N{Variation Selector-16} Authenticate"
+    INVALID = "\N{CROSS MARK}\N{Variation Selector-16} Invalid"
+    EXPIRED = "\N{CROSS MARK}\N{Variation Selector-16} Expired"
+    CANNOT_AUTHENTICATE = "\N{CROSS MARK}\N{Variation Selector-16} Cannot authenticate"
 
     def __init__(self, as_app: bool) -> None:
         try:
