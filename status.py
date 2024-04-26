@@ -277,7 +277,7 @@ class Repo:
         if self.branch:
             t.append(f" \N{Herb}\N{Variation Selector-16}{self.branch}")
         if self.workflow:
-            t.append(f" \N{Hammer}\N{Variation Selector-16}{self.workflow_name}")
+            t.append(f" \N{Hammer}\N{Variation Selector-16}{self.workflow_name or self.workflow}")
         if self.event:
             t.append(f" \N{Party Popper}\N{Variation Selector-16}{self.event}")
         if self.actor:
