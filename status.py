@@ -8,44 +8,34 @@ import sys
 import time
 import warnings
 import webbrowser
-from dataclasses import dataclass, field, asdict
+from collections.abc import Callable, Generator, Iterable, MutableSequence, Sequence
+from dataclasses import asdict, dataclass, field
 from enum import Enum, auto
 from functools import cached_property
+from http import HTTPStatus
 from itertools import dropwhile
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
-from typing import (
-    MutableSequence,
-    Optional,
-    Sequence,
-    Tuple,
-    Callable,
-    Iterable,
-    TypeVar,
-    Generator,
-    IO,
-)
+from typing import IO, Optional, TypeVar
 
 import AppKit
 import arrow
+import httpx
 import humanize
 import pyperclip
-import httpx
 import rumps
-from aiohttp.client_exceptions import ClientResponseError
-from aiohttp_retry import RetryClient, FibonacciRetry, ClientResponse
 from contexttimer import Timer, timer
-from dataclasses_json import dataclass_json, Undefined, Exclude, config
-from yarl import URL
+from dataclasses_json import Exclude, Undefined, config, dataclass_json
 from ordered_enum import OrderedEnum
 from pythonjsonlogger import jsonlogger
+from yarl import URL
 
 TRACE = 5
 logging.addLevelName(TRACE, "TRACE")
 
 logger = logging.getLogger(__name__)
 
-VERSION = "0.9.0"
+VERSION = "0.9.1"
 LOCALTZ = arrow.now().tzinfo
 AS_APP = getattr(sys, "frozen", None) == "macosx_app"
 DEFAULT_CONFIG = json.dumps(
@@ -73,9 +63,7 @@ DEFAULT_CONFIG = json.dumps(
 def main():
     try:
         if AS_APP:
-            config = get_config_from_config_file(
-                Path.home() / ".github_actions_status" / "config.json", DEFAULT_CONFIG
-            )
+            config = get_config_from_config_file(Path.home() / ".github_actions_status" / "config.json", DEFAULT_CONFIG)
             interval = config["interval"]
         else:  # CLI
             args = parse_args()
@@ -104,12 +92,12 @@ def main():
 
 
 class Status(OrderedEnum):
-    NO_RUNS = "\N{Digit Zero}\N{Variation Selector-16}\N{Combining Enclosing Keycap}"
-    OK = "\N{Large Green Circle}\N{Variation Selector-16}"
-    RUNNING_FROM_OK = "\N{BLACK RIGHT-POINTING TRIANGLE}\N{Variation Selector-16}"
-    RUNNING_FROM_FAILED = "\N{Clockwise Rightwards and Leftwards Open Circle Arrows}\N{Variation Selector-16}"
-    FAILED = "\N{Large Red Circle}\N{Variation Selector-16}"
-    DISCONNECTED = "\N{No Entry Sign}\N{Variation Selector-16}"
+    NO_RUNS = "\N{DIGIT ZERO}\N{VARIATION SELECTOR-16}\N{COMBINING ENCLOSING KEYCAP}"
+    OK = "\N{LARGE GREEN CIRCLE}\N{VARIATION SELECTOR-16}"
+    RUNNING_FROM_OK = "\N{BLACK RIGHT-POINTING TRIANGLE}\N{VARIATION SELECTOR-16}"
+    RUNNING_FROM_FAILED = "\N{CLOCKWISE RIGHTWARDS AND LEFTWARDS OPEN CIRCLE ARROWS}\N{VARIATION SELECTOR-16}"
+    FAILED = "\N{LARGE RED CIRCLE}\N{VARIATION SELECTOR-16}"
+    DISCONNECTED = "\N{NO ENTRY SIGN}\N{VARIATION SELECTOR-16}"
 
 
 @dataclass_json
@@ -171,6 +159,7 @@ class Repository:
     """Deserialised GitHub Repository details.
     See https://docs.github.com/en/rest/repos/repos?apiVersion=2022-11-28
     """
+
     id: int
     name: str
     owner: Actor
@@ -212,9 +201,7 @@ class Repo:
     actor: Optional[str]
     branch: Optional[str]
     event: Optional[str]
-    menu_item: rumps.MenuItem = field(
-        repr=False, metadata=config(encoder=str, exclude=Exclude.ALWAYS)
-    )
+    menu_item: rumps.MenuItem = field(repr=False, metadata=config(encoder=str, exclude=Exclude.ALWAYS))
     auth_holder: "AuthHolder"
     workflow_name: Optional[str] = None
     status: Status = Status.DISCONNECTED
@@ -238,10 +225,10 @@ class Repo:
         repo.menu_item.set_callback(repo.on_click)
         return repo
 
-    async def check(self, session: RetryClient):
+    async def check(self, client: httpx.AsyncClient):
         previous_status = self.status
         try:
-            new_runs = await self.get_new_runs(session)
+            new_runs = await self.get_new_runs(client)
             if new_runs:
                 *in_progress, completed = new_runs
 
@@ -249,9 +236,7 @@ class Repo:
 
                 if in_progress:
                     self.status = (
-                        Status.RUNNING_FROM_OK
-                        if completed.conclusion == "success"
-                        else Status.RUNNING_FROM_FAILED
+                        Status.RUNNING_FROM_OK if completed.conclusion == "success" else Status.RUNNING_FROM_FAILED
                     )
                 else:
                     self.status = Status.OK if completed.conclusion == "success" else Status.FAILED
@@ -261,7 +246,7 @@ class Repo:
         except NoRepoRunException as e:
             logger.exception(e)
             self.status = Status.NO_RUNS
-        except ClientResponseError as e:
+        except httpx.RequestError as e:
             logger.exception(e)
             self.status = Status.DISCONNECTED
             self.etag = None
@@ -275,31 +260,27 @@ class Repo:
     def menu_title(self) -> str:
         t = [f"{self.status.value} {self.owner}/{self.repo}"]
         if self.branch:
-            t.append(f" \N{Herb}\N{Variation Selector-16}{self.branch}")
+            t.append(f" \N{HERB}\N{VARIATION SELECTOR-16}{self.branch}")
         if self.workflow:
-            t.append(f" \N{Hammer}\N{Variation Selector-16}{self.workflow_name or self.workflow}")
+            t.append(f" \N{HAMMER}\N{VARIATION SELECTOR-16}{self.workflow_name or self.workflow}")
         if self.event:
-            t.append(f" \N{Party Popper}\N{Variation Selector-16}{self.event}")
+            t.append(f" \N{PARTY POPPER}\N{VARIATION SELECTOR-16}{self.event}")
         if self.actor:
-            t.append(f" \N{Adult}\N{Variation Selector-16}{self.actor}")
+            t.append(f" \N{ADULT}\N{VARIATION SELECTOR-16}{self.actor}")
         t += [
             " - ",
-            humanize.naturaldelta(arrow.now() - self.last_run.updated_at)
-            if self.last_run
-            else "never",
+            humanize.naturaldelta(arrow.now() - self.last_run.updated_at) if self.last_run else "never",
         ]
         return "".join(t)
 
-    async def get_new_runs(self, session: RetryClient) -> Sequence[WorkflowRun]:
+    async def get_new_runs(self, client: httpx.AsyncClient) -> Sequence[WorkflowRun]:
         """See https://docs.github.com/en/rest/actions/workflow-runs?apiVersion=2022-11-28#list-workflow-runs-for-a-repository for docs"""
         headers = {
             k: v
             for k, v in [
                 (
                     "Authorization",
-                    f"Token {self.auth_holder.oauth_token}"
-                    if self.auth_holder.oauth_token
-                    else None,
+                    f"Token {self.auth_holder.oauth_token}" if self.auth_holder.oauth_token else None,
                 ),
                 ("If-None-Match", self.etag),
                 ("Accept", "application/vnd.github+json"),
@@ -310,37 +291,34 @@ class Repo:
 
         logging.log(TRACE, "getting", extra={"url": self.github_api_list_workflow_runs_url})
         with Timer() as t:
-            async with session.get(
-                str(self.github_api_list_workflow_runs_url), headers=headers
-            ) as resp:
-                logging.log(
-                    TRACE,
-                    "got",
-                    extra={"url": self.github_api_list_workflow_runs_url, "elapsed": t.elapsed},
+            resp = await client.get(str(self.github_api_list_workflow_runs_url), headers=headers)
+            logging.log(
+                TRACE,
+                "got",
+                extra={"url": self.github_api_list_workflow_runs_url, "elapsed": t.elapsed},
+            )
+
+            if resp.status_code == HTTPStatus.UNAUTHORIZED:
+                self.auth_holder.expired()
+            elif resp.status_code == HTTPStatus.NOT_MODIFIED:
+                logger.debug("no updates detected", extra={"repo": self.to_dict()})
+                return []
+            else:
+                resp.raise_for_status()
+                self._log_rate_limit_stats(resp)
+                self.etag = resp.headers["ETag"]
+
+                resp_json = resp.json()
+                logger.debug("updates detected", extra={"repo": self.to_dict(), "detail": resp_json})
+                if not resp_json["total_count"]:
+                    raise NoRepoRunException("No repo runs detected.")
+                all_runs = [WorkflowRun.from_dict(r) for r in resp_json["workflow_runs"]]
+                logger.debug(
+                    "all runs",
+                    extra={"all_runs": WorkflowRun.schema().dump(all_runs, many=True)},
                 )
-
-                if resp.status == 401:
-                    self.auth_holder.expired()
-                else:
-                    resp.raise_for_status()
-                    self._log_rate_limit_stats(resp)
-                    self.etag = resp.headers["ETag"]
-
-                    if resp.status == 304:
-                        logger.debug("no updates detected", extra={"repo": self.to_dict()})
-                        return []
-                    else:
-                        resp_json = await resp.json()
-                        logger.debug("updates detected", extra={"repo": self.to_dict(), "detail": resp_json})
-                        if not resp_json["total_count"]:
-                            raise NoRepoRunException("No repo runs detected.")
-                        all_runs = [WorkflowRun.from_dict(r) for r in resp_json["workflow_runs"]]
-                        logger.debug(
-                            "all runs",
-                            extra={"all_runs": WorkflowRun.schema().dump(all_runs, many=True)},
-                        )
-                        started = dropwhile(lambda r: r.status == "queued", all_runs)
-                        return list(take_until(lambda r: r.status == "completed", started))
+                started = dropwhile(lambda r: r.status == "queued", all_runs)
+                return list(take_until(lambda r: r.status == "completed", started))
 
     @cached_property
     def github_api_list_workflow_runs_url(self, per_page=10) -> URL:
@@ -390,12 +368,11 @@ class Repo:
             resp = httpx.post(
                 str(self.github_api_rerun_failed_jobs_url),
                 headers={
-                    "Authorization": f"Token {self.auth_holder.oauth_token}"
-                    if self.auth_holder.oauth_token
-                    else None,
+                    "Authorization": f"Token {self.auth_holder.oauth_token}" if self.auth_holder.oauth_token else None,
                     "Accept": "application/vnd.github+json",
                     "X-GitHub-Api-Version": "2022-11-28",
                 },
+                follow_redirects=True,
             )
             logger.debug("got", extra={"response": resp})
             resp.raise_for_status()
@@ -414,7 +391,7 @@ class Repo:
         )
 
     @staticmethod
-    def _log_rate_limit_stats(resp: ClientResponse) -> None:
+    def _log_rate_limit_stats(resp: httpx.Response) -> None:
         remaining = int(resp.headers["X-RateLimit-Remaining"])
         limit = int(resp.headers["X-RateLimit-Limit"])
         reset = arrow.get(int(resp.headers["X-RateLimit-Reset"])).to(LOCALTZ)
@@ -495,10 +472,14 @@ class GithubActionsStatusChecker:
             )
 
     async def _check_all(self):
-        async with RetryClient(retry_options=(FibonacciRetry(attempts=5))) as session:
+        async with httpx.AsyncClient(
+            timeout=10.0,
+            transport=httpx.AsyncHTTPTransport(retries=5),
+            follow_redirects=True,
+        ) as client:
             tasks = []
             for repo in self.app.repos:
-                task = asyncio.ensure_future(repo.check(session))
+                task = asyncio.ensure_future(repo.check(client))
                 tasks.append(task)
 
             responses = await asyncio.gather(*tasks)
@@ -511,20 +492,18 @@ class AuthHolder:
     github_client_id: Optional[str]
     oauth_token: Optional[str]
     oauth_token_filepath: Path
-    menu_item: rumps.MenuItem = field(
-        repr=False, metadata=config(encoder=str, exclude=Exclude.ALWAYS)
-    )
+    menu_item: rumps.MenuItem = field(repr=False, metadata=config(encoder=str, exclude=Exclude.ALWAYS))
 
     AUTH_URL = URL("https://github.com/login/device/code")
     POLL_URL = URL("https://github.com/login/oauth/access_token")
     CHECK_URL = URL("https://api.github.com/user/issues")
     SCOPE = "repo"
 
-    AUTHENTICATED = "\N{WHITE HEAVY CHECK MARK}\N{Variation Selector-16} Authenticated"
-    AUTHENTICATE = "\N{BLACK QUESTION MARK ORNAMENT}\N{Variation Selector-16} Authenticate"
-    INVALID = "\N{CROSS MARK}\N{Variation Selector-16} Invalid"
-    EXPIRED = "\N{CROSS MARK}\N{Variation Selector-16} Expired"
-    CANNOT_AUTHENTICATE = "\N{CROSS MARK}\N{Variation Selector-16} Cannot authenticate"
+    AUTHENTICATED = "\N{WHITE HEAVY CHECK MARK}\N{VARIATION SELECTOR-16} Authenticated"
+    AUTHENTICATE = "\N{BLACK QUESTION MARK ORNAMENT}\N{VARIATION SELECTOR-16} Authenticate"
+    INVALID = "\N{CROSS MARK}\N{VARIATION SELECTOR-16} Invalid"
+    EXPIRED = "\N{CROSS MARK}\N{VARIATION SELECTOR-16} Expired"
+    CANNOT_AUTHENTICATE = "\N{CROSS MARK}\N{VARIATION SELECTOR-16} Cannot authenticate"
 
     def __init__(self, as_app: bool) -> None:
         try:
@@ -536,9 +515,7 @@ class AuthHolder:
 
         oauth_token_filename = ".oauth_token"
         self.oauth_token_filepath = (
-            Path.home() / ".github_actions_status" / oauth_token_filename
-            if as_app
-            else Path(oauth_token_filename)
+            Path.home() / ".github_actions_status" / oauth_token_filename if as_app else Path(oauth_token_filename)
         )
         if self.oauth_token_filepath.is_file():
             with self.oauth_token_filepath.open("r") as f:
@@ -553,7 +530,7 @@ class AuthHolder:
                 extra={"oauth_token_filepath": self.oauth_token_filepath},
             )
 
-        if self.oauth_token:
+        if self.oauth_token and self._test_token(self.oauth_token):
             menu_item_text = AuthHolder.AUTHENTICATED
         elif not self.github_client_id:
             menu_item_text = AuthHolder.CANNOT_AUTHENTICATE
@@ -586,12 +563,13 @@ class AuthHolder:
                 logger.warning("Authentication - invalid token", extra=locals())
                 self.menu_item.title = AuthHolder.INVALID
 
-    def _request_device_and_user_verification_codes(self) -> Tuple[str, int, str, URL]:
+    def _request_device_and_user_verification_codes(self) -> tuple[str, int, str, URL]:
         response = httpx.post(
-            AuthHolder.AUTH_URL,
+            str(AuthHolder.AUTH_URL),
             headers={"Accept": "application/json"},
             data={"client_id": self.github_client_id, "scope": AuthHolder.SCOPE},
             timeout=5,
+            follow_redirects=True,
         )
         response.raise_for_status()
         response_json = response.json()
@@ -616,10 +594,9 @@ class AuthHolder:
         )
         if copy:
             pyperclip.copy(user_code)
-            webbrowser.open(verification_uri.url)
+            webbrowser.open(str(verification_uri))
             return True
-        else:
-            return False
+        return False
 
     def _poll_until_completion(self, device_code: str, interval: int) -> str:
         while True:
@@ -629,7 +606,7 @@ class AuthHolder:
 
             # Send a request to GitHub to check if the user has authorized the app
             response = httpx.post(
-                AuthHolder.POLL_URL,
+                str(AuthHolder.POLL_URL),
                 headers={"Accept": "application/json"},
                 data={
                     "client_id": self.github_client_id,
@@ -637,6 +614,7 @@ class AuthHolder:
                     "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
                 },
                 timeout=5,
+                follow_redirects=True,
             )
             response.raise_for_status()
             response_json = response.json()
@@ -644,19 +622,20 @@ class AuthHolder:
             if "access_token" in response_json:
                 logger.debug("Access token acquired")
                 return response_json["access_token"]
-            elif response_json.get("error", None) == "expired_token":
+            if response_json.get("error", None) == "expired_token":
                 logger.warning("Authentication - user token expired.", extra=locals())
                 raise GitHubAuthenticationException("User token expired")
 
     @staticmethod
     def _test_token(access_token: str) -> bool:
         response = httpx.get(
-            AuthHolder.CHECK_URL,
+            str(AuthHolder.CHECK_URL),
             headers={"Accept": "application/json", "Authorization": f"Token {access_token}"},
             timeout=5,
+            follow_redirects=True,
         )
         logger.info("Tested token", extra={"url": AuthHolder.CHECK_URL, "response": response})
-        return response.ok
+        return response.is_success
 
     def _update_oauth_token_file(self) -> None:
         with self.oauth_token_filepath.open("w") as f:
@@ -677,7 +656,7 @@ class AuthHolder:
 T = TypeVar("T")
 
 
-def take_until(predicate: Callable[[T], bool], iterable: Iterable[T]) -> Generator[T, None, None]:
+def take_until(predicate: Callable[[T], bool], iterable: Iterable[T]) -> Generator[T]:
     for i in iterable:
         yield i
         if predicate(i):
@@ -748,9 +727,7 @@ class FileTypeWithWrittenDefault(argparse.FileType):
         errors: str = None,
         default: Optional[str] = None,
     ) -> None:
-        super(FileTypeWithWrittenDefault, self).__init__(
-            mode=mode, bufsize=bufsize, encoding=encoding, errors=errors
-        )
+        super(FileTypeWithWrittenDefault, self).__init__(mode=mode, bufsize=bufsize, encoding=encoding, errors=errors)
         self._default = default
 
     def __call__(self, filepath: str) -> IO:

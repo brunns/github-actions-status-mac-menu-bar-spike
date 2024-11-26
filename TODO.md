@@ -14,9 +14,9 @@ I probably won't do many of these here - this is just a spike after all - but a 
 * Pause/restart app.
 * ~~Trigger workflow runs?~~
 * ~~What's up with the threads hanging?~~ (Might be fixed?)
-* requests -> [httpx](https://www.python-httpx.org/)
-* furl -> [imurl](https://pypi.org/project/imurl/)
-* Display error message if config broken.
+* ~~requests -> [httpx](https://www.python-httpx.org/)~~
+* ~~furl -> [yarl](https://pypi.org/project/yarl/)~~
+* Display better error message if config broken.
 
 ## To-be structure
 
