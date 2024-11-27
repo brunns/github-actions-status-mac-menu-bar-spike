@@ -61,18 +61,23 @@ DEFAULT_CONFIG = json.dumps(
 
 
 def main():
-    try:
-        if AS_APP:
-            config = get_config_from_config_file(Path.home() / ".github_actions_status" / "config.json", DEFAULT_CONFIG)
+    if AS_APP:
+        try:
+            config_path = Path.home() / ".github_actions_status" / "config.json"
+            config = get_config_from_config_file(config_path, DEFAULT_CONFIG)
             interval = config["interval"]
-        else:  # CLI
+        except json.JSONDecodeError as e:
+            rumps.alert("Error reading config file.", message=f"file: {config_path}\nerror: {e}")
+            raise
+    else:  # CLI
+        try:
             args = parse_args()
             logger.debug("args", extra=vars(args))
             config = json.load(args.config)
             interval = args.interval or config["interval"]
-    except json.JSONDecodeError as e:
-        rumps.alert("Error reading config file.", message=e.msg)
-        raise
+        except json.JSONDecodeError as e:
+            logger.exception("Error reading config file %s", args.config.name, exc_info=e)
+            raise
 
     logger.debug("config", extra=config)
 
