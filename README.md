@@ -19,7 +19,8 @@ brew install direnv xc
 
 If you are using [`direnv`](https://direnv.net/), copy [`.envrc.template`](/.envrc.template) to `.envrc`, populate, and
 `direnv allow` it. (If not, you'll need to create the environment variables from [`.envrc.template`](/.envrc.template)
-some other way. The simplest might be to create `.envrc` as normal, and to manually run `source .envrc`.)
+some other way, and also manually create and activate your venv. The simplest might be to create `.envrc` as normal, 
+and to manually run `source .envrc`.)
 
 If you'd prefer not to use [`xc` ](https://xcfile.dev/) as a task runner, [tasks are defined below](#Tasks) and can be 
 run from the command line.
@@ -75,9 +76,17 @@ Install or upgrade dependencies
 Requires: setup
 Run: once
 ```sh
-source .venv/bin/activate
-pip install -r requirements.txt --upgrade
+uv pip install -r requirements.txt --upgrade
 ````
+
+### format
+
+Formatting & linting
+
+```sh
+uv run --with ruff ruff format --target-version py39 --line-length=120
+uv run --with ruff ruff check --fix-only --target-version py39 --select ALL --ignore T201,ANN,D --line-length=120
+```
 
 ### cli
 
@@ -85,7 +94,6 @@ Run from cli
 
 Requires: deps
 ```sh 
-source .venv/bin/activate
 python3 status.py -vvv
 ```
 
