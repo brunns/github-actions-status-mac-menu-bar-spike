@@ -679,13 +679,13 @@ def get_config_from_config_file(config_path: Path, default: str):
         handler = TimedRotatingFileHandler(config["logfile"], backupCount=3)
     else:
         handler = logging.StreamHandler(stream=sys.stdout)
-    init_logging(config["verbosity"], silence_packages=["urllib3"], handler=handler)
+    init_logging(config["verbosity"], silence_packages=["urllib3", "httpx", "httpcore"], handler=handler)
     return config
 
 
 def parse_args() -> argparse.Namespace:
     args = create_parser().parse_args()
-    init_logging(args.verbosity, silence_packages=["urllib3"])
+    init_logging(args.verbosity, silence_packages=["urllib3", "httpx", "httpcore"])
 
     return args
 
