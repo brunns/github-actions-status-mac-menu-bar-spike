@@ -349,7 +349,7 @@ class Repo:
         return URL("https://github.com/") / self.owner / self.repo
 
     def on_click(self, sender: rumps.MenuItem) -> None:
-        event = Event.get_event()
+        event = ClickEvent.get_event()
         logger.debug("clicked", extra={"repo": self.to_dict(), "event": asdict(event)})
         if event.control:
             logger.info("rerunning failed jobs")
@@ -361,7 +361,7 @@ class Repo:
             url = self.repo_url / "commit" / self.last_run.head_commit.id
             logger.info("opening commit", extra={"url": url})
             webbrowser.open(str(url))
-        elif event.type == Event.EventType.right:
+        elif event.type == ClickEvent.ClickType.right:
             logger.info("opening repo", extra={"url": self.repo_url})
             webbrowser.open(str(self.repo_url))
         elif self.last_run and self.last_run.html_url:
@@ -408,28 +408,28 @@ class Repo:
 
 @dataclass_json
 @dataclass(frozen=True)
-class Event:
-    class EventType(Enum):
+class ClickEvent:
+    class ClickType(Enum):
         left = auto()
         right = auto()
         key = auto()
 
-    type: EventType
+    type: ClickType
     shift: bool
     control: bool
     option: bool
     command: bool
 
     @classmethod
-    def get_event(cls) -> "Event":
+    def get_event(cls) -> "ClickEvent":
         raw_event = AppKit.NSApplication.sharedApplication().currentEvent()
 
         if raw_event.type() in {AppKit.NSEventTypeLeftMouseUp, AppKit.NSEventTypeLeftMouseDown}:
-            click = Event.EventType.left
+            click = ClickEvent.ClickType.left
         elif raw_event.type() in {AppKit.NSEventTypeRightMouseUp, AppKit.NSEventTypeRightMouseDown}:
-            click = Event.EventType.right
+            click = ClickEvent.ClickType.right
         elif raw_event.type() == AppKit.NSEventTypeKeyDown:
-            click = Event.EventType.key
+            click = ClickEvent.ClickType.key
         else:
             logger.warning("unknown event type", extra={"event": raw_event})
             click = None
@@ -549,7 +549,7 @@ class AuthHolder:
         """Authenticate against GitHub using OAuth device flow.
         See https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#device-flow
         """
-        event = Event.get_event()
+        event = ClickEvent.get_event()
         logger.debug("clicked", extra={"AuthHolder": self.to_dict(), "event": event.to_dict()})
 
         (
