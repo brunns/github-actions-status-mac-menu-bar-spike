@@ -74,7 +74,7 @@ Formatting & linting
 
 ```sh
 uv run --with ruff ruff format --target-version py39 --line-length=120
-uv run --with ruff ruff check --fix-only --target-version py39 --select ALL --ignore T201,ANN,D --line-length=120
+uv run --with ruff ruff check --fix-only --target-version py39 --select ALL --ignore T201,ANN,D,FA100 --line-length=120
 ```
 
 ### check-format
@@ -83,7 +83,7 @@ Check formatting & other linting.
 
 ```sh
 uv run --with ruff ruff format --check --target-version py39 --line-length=120
-uv run --with ruff ruff check --target-version py39 --select ALL --ignore T201,ANN,D --line-length=120
+uv run --with ruff ruff check --target-version py39 --select ALL --ignore T201,ANN,D,FA100 --line-length=120
 ```
 
 ### cli

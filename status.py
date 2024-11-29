@@ -249,10 +249,10 @@ class Repo:
                 if self.workflow:
                     self.workflow_name = completed.name
         except NoRepoRunException as e:
-            logger.exception(e)
+            logger.exception("NoRepoRunException", exc_info=e)
             self.status = Status.NO_RUNS
         except httpx.RequestError as e:
-            logger.exception(e)
+            logger.exception("httpx.RequestError", exc_info=e)
             self.status = Status.DISCONNECTED
             self.etag = None
 
@@ -300,7 +300,9 @@ class Repo:
                 resp = await client.get(str(self.github_api_list_workflow_runs_url), headers=headers)
             except Exception as e:
                 logger.exception(
-                    "exception getting new runs", exc_info=e, extra={"exception": e, "exception_class": e.__class__},
+                    "exception getting new runs",
+                    exc_info=e,
+                    extra={"exception": e, "exception_class": e.__class__},
                 )
 
         logging.log(
@@ -493,8 +495,7 @@ class GithubActionsStatusChecker:
                 task = asyncio.ensure_future(repo.check(client))
                 tasks.append(task)
 
-            responses = await asyncio.gather(*tasks)
-            return responses
+            return await asyncio.gather(*tasks)
 
 
 @dataclass_json
@@ -519,8 +520,8 @@ class AuthHolder:
     def __init__(self, as_app: bool) -> None:
         try:
             self.github_client_id = os.environ["GITHUB_OAUTH_CLIENT_ID"]
-        except KeyError:
-            logger.error("Env var GITHUB_OAUTH_CLIENT_ID not found.")
+        except KeyError as e:
+            logger.exception("Env var GITHUB_OAUTH_CLIENT_ID not found.", exc_info=e)
             self.github_client_id = None
         self.oauth_token = None
 
@@ -734,11 +735,11 @@ class FileTypeWithWrittenDefault(argparse.FileType):
         self,
         mode: str = "r",
         bufsize: int = -1,
-        encoding: str = None,
-        errors: str = None,
+        encoding: Optional[str] = None,
+        errors: Optional[str] = None,
         default: Optional[str] = None,
     ) -> None:
-        super(FileTypeWithWrittenDefault, self).__init__(mode=mode, bufsize=bufsize, encoding=encoding, errors=errors)
+        super().__init__(mode=mode, bufsize=bufsize, encoding=encoding, errors=errors)
         self._default = default
 
     def __call__(self, filepath: str) -> IO:
@@ -746,7 +747,7 @@ class FileTypeWithWrittenDefault(argparse.FileType):
         if filepath != "-" and self._mode == "r" and not path.is_file():
             with path.open("w") as f:
                 f.write(self._default or "")
-        return super(FileTypeWithWrittenDefault, self).__call__(filepath)
+        return super().__call__(filepath)
 
 
 def init_logging(
