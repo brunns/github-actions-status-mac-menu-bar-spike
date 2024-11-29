@@ -296,34 +296,40 @@ class Repo:
 
         logging.log(TRACE, "getting", extra={"url": self.github_api_list_workflow_runs_url})
         with Timer() as t:
-            resp = await client.get(str(self.github_api_list_workflow_runs_url), headers=headers)
-            logging.log(
-                TRACE,
-                "got",
-                extra={"url": self.github_api_list_workflow_runs_url, "elapsed": t.elapsed},
-            )
-
-            if resp.status_code == HTTPStatus.UNAUTHORIZED:
-                self.auth_holder.expired()
-            elif resp.status_code == HTTPStatus.NOT_MODIFIED:
-                logger.debug("no updates detected", extra={"repo": self.to_dict()})
-                return []
-            else:
-                resp.raise_for_status()
-                self._log_rate_limit_stats(resp)
-                self.etag = resp.headers["ETag"]
-
-                resp_json = resp.json()
-                logger.debug("updates detected", extra={"repo": self.to_dict(), "detail": resp_json})
-                if not resp_json["total_count"]:
-                    raise NoRepoRunException("No repo runs detected.")
-                all_runs = [WorkflowRun.from_dict(r) for r in resp_json["workflow_runs"]]
-                logger.debug(
-                    "all runs",
-                    extra={"all_runs": WorkflowRun.schema().dump(all_runs, many=True)},
+            try:
+                resp = await client.get(str(self.github_api_list_workflow_runs_url), headers=headers)
+            except Exception as e:
+                logger.exception(
+                    "exception getting new runs", exc_info=e, extra={"exception": e, "exception_class": e.__class__},
                 )
-                started = dropwhile(lambda r: r.status == "queued", all_runs)
-                return list(take_until(lambda r: r.status == "completed", started))
+
+        logging.log(
+            TRACE,
+            "got",
+            extra={"url": self.github_api_list_workflow_runs_url, "elapsed": t.elapsed, "response": resp},
+        )
+
+        if resp.status_code == HTTPStatus.UNAUTHORIZED:
+            self.auth_holder.expired()
+        elif resp.status_code == HTTPStatus.NOT_MODIFIED:
+            logger.debug("no updates detected", extra={"repo": self.to_dict()})
+            return []
+        else:
+            resp.raise_for_status()
+            self._log_rate_limit_stats(resp)
+            self.etag = resp.headers["ETag"]
+
+            resp_json = resp.json()
+            logger.debug("updates detected", extra={"repo": self.to_dict(), "detail": resp_json})
+            if not resp_json["total_count"]:
+                raise NoRepoRunException("No repo runs detected.")
+            all_runs = [WorkflowRun.from_dict(r) for r in resp_json["workflow_runs"]]
+            logger.debug(
+                "all runs",
+                extra={"all_runs": WorkflowRun.schema().dump(all_runs, many=True)},
+            )
+            started = dropwhile(lambda r: r.status == "queued", all_runs)
+            return list(take_until(lambda r: r.status == "completed", started))
 
     @cached_property
     def github_api_list_workflow_runs_url(self, per_page=10) -> URL:

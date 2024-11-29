@@ -63,7 +63,6 @@ in any combination.
 
 Install or upgrade dependencies
 
-Requires: setup
 Run: once
 ```sh
 uv pip install -r requirements.txt --upgrade
@@ -78,7 +77,7 @@ uv run --with ruff ruff format --target-version py39 --line-length=120
 uv run --with ruff ruff check --fix-only --target-version py39 --select ALL --ignore T201,ANN,D --line-length=120
 ```
 
-## check-format
+### check-format
 
 Check formatting & other linting.
 
@@ -102,6 +101,6 @@ Build as an .app bundle and zip
 
 Requires: deps
 ```sh 
-python3 setup.py py2app --arch universal2  # .app will be found in the dist/ folder
+python3 setup.py py2app --arch universal2 --packages anyio  # .app will be found in the dist/ folder
 ditto -c -k --sequesterRsrc --keepParent "dist/GitHub Actions Status.app" "dist/GitHub Actions Status.app.zip"
 ```
