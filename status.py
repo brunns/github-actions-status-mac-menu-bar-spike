@@ -384,7 +384,7 @@ class Repo:
         else:
             logger.info("no workflow failure to re-run", extra={"repo": self.to_dict()})
 
-    @cached_property
+    @property
     def github_api_rerun_failed_jobs_url(self) -> URL:
         return (
             URL("https://api.github.com/repos/")
