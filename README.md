@@ -10,11 +10,11 @@ Thanks to [Freja Brunning](https://twitter.com/freja_brunning) for the icon.
 
 ## Optional tools
 
-[`direnv`](https://direnv.net/) and [`xc` ](https://xcfile.dev/) are both optional.
+[`uv`](https://docs.astral.sh/uv) [`direnv`](https://direnv.net) and [`xc` ](https://xcfile.dev) are all optional.
 
 ```sh
 brew tap joerdav/xc
-brew install direnv xc
+brew install direnv uv xc
 ```
 
 If you are using [`direnv`](https://direnv.net/), copy [`.envrc.template`](/.envrc.template) to `.envrc`, populate, and
@@ -59,16 +59,6 @@ in any combination.
 
 ## Tasks
 
-### setup
-One-time setup
-
-Run: once
-```sh
-# If you're using pyenv, you'll need to use the system python for this. If not, I expect this is the default.
-pyenv local system  
-python3 -m venv .venv
-```
-
 ### deps
 
 Install or upgrade dependencies
@@ -86,6 +76,15 @@ Formatting & linting
 ```sh
 uv run --with ruff ruff format --target-version py39 --line-length=120
 uv run --with ruff ruff check --fix-only --target-version py39 --select ALL --ignore T201,ANN,D --line-length=120
+```
+
+## check-format
+
+Check formatting & other linting.
+
+```sh
+uv run --with ruff ruff format --check --target-version py39 --line-length=120
+uv run --with ruff ruff check --target-version py39 --select ALL --ignore T201,ANN,D --line-length=120
 ```
 
 ### cli
