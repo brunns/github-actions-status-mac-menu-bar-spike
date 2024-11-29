@@ -18,6 +18,7 @@ I probably won't do many of these here - this is just a spike after all - but a 
 * ~~furl -> [yarl](https://pypi.org/project/yarl/)~~
 * ~~Display better error message if config broken.~~
 * Move default config location from `~/.github_actions_status/` to `~/.local/github_actions_status/`
+* Help panel
 
 ## To-be structure
 
